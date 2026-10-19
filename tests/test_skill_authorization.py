@@ -17,6 +17,7 @@ def test_skill_authorization_required_permissions():
         # Create a test user
         test_user = User(
             id="test-user-id-auth",
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f",  # default tenant
             username="testuserauth",
             email="testuserauth@example.com",
             hashed_password="hashedpassword",
@@ -83,6 +84,7 @@ def test_skill_authorization_missing_permissions():
         # Create a user with only perm1
         test_user = User(
             id="test-user-id-multi",
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f",  # default tenant
             username="testusermulti",
             email="testusermulti@example.com",
             hashed_password="hashedpassword",

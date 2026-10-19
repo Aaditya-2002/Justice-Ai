@@ -45,6 +45,7 @@ async def test_skill_invocation():
         # Create a test user
         test_user = User(
             id="test-user-id",
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f",  # default tenant
             username="testuser",
             email="test@example.com",
             hashed_password="hashedpassword",
@@ -57,6 +58,7 @@ async def test_skill_invocation():
         # Create a test conversation
         test_conversation = Conversation(
             id="test-conversation-id",
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f",  # default tenant
             user_id=test_user.id,
             title="Test Conversation",
         )
@@ -72,7 +74,8 @@ async def test_skill_invocation():
         response = await chat_service.generate_response(
             conversation_id=test_conversation.id,
             user_message=user_message,
-            user_id=test_user.id
+            user_id=test_user.id,
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f"
         )
         # Check that the response contains the expected result
         assert "Skill wordcount result:" in response
@@ -83,7 +86,8 @@ async def test_skill_invocation():
         response = await chat_service.generate_response(
             conversation_id=test_conversation.id,
             user_message=user_message,
-            user_id=test_user.id
+            user_id=test_user.id,
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f"
         )
         assert "Skill wordcount result:" in response
         assert '"word_count": 0' in response
@@ -93,7 +97,8 @@ async def test_skill_invocation():
         response = await chat_service.generate_response(
             conversation_id=test_conversation.id,
             user_message=user_message,
-            user_id=test_user.id
+            user_id=test_user.id,
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f"
         )
         assert "Error executing skill nonexistent:" in response
 
@@ -102,7 +107,8 @@ async def test_skill_invocation():
         response = await chat_service.generate_response(
             conversation_id=test_conversation.id,
             user_message=user_message,
-            user_id=test_user.id
+            user_id=test_user.id,
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f"
         )
         assert "Invalid JSON input for skill." in response
 
@@ -111,7 +117,8 @@ async def test_skill_invocation():
         response = await chat_service.generate_response(
             conversation_id=test_conversation.id,
             user_message=user_message,
-            user_id=test_user.id
+            user_id=test_user.id,
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f"
         )
         assert "Invalid skill invocation. Usage: /skill <skill_name> <json_input>" in response
 
@@ -120,7 +127,8 @@ async def test_skill_invocation():
         response = await chat_service.generate_response(
             conversation_id=test_conversation.id,
             user_message=user_message,
-            user_id=test_user.id
+            user_id=test_user.id,
+            tenant_id="712dd85e-398d-4890-a030-07f811bc159f"
         )
         assert "Invalid skill invocation. Usage: /skill <skill_name> <json_input>" in response
 

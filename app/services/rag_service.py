@@ -114,7 +114,7 @@ class RAGService:
                 chunk_index=idx,
                 chunk_text=chunk_text,
                 embedding=embedding,  # Store as list of floats (will be converted to Vector)
-                chunk_metadata={}  # Empty metadata for now
+                chunk_metadata=json.dumps({})  # Empty metadata for now, stored as JSON string
             )
             self.db.add(chunk)
         

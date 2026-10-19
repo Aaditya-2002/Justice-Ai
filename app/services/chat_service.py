@@ -81,6 +81,7 @@ class ChatService:
         user_msg_count = self.db.query(Message).filter(Message.conversation_id == conversation_id).count()
         user_msg = Message(
             id=f"msg-{conversation_id}-{user_msg_count}-user",
+            tenant_id=tenant_id,
             conversation_id=conversation_id,
             role="user",
             content=user_message

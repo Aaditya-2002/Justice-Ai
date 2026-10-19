@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from sqlalchemy.orm import Session
 from app.models.document import Document
+from app.models.document_chunk import DocumentChunk
 from app.services.rag_service import RAGService
 import PyPDF2
 import docx
@@ -134,6 +135,8 @@ class DocumentService:
         ).first()
         if not document:
             return False
+        # Delete associated chunks first (foreign key constraint)
+        self.db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).delete()
         # Delete file from disk
         if os.path.exists(document.storage_path):
             os.remove(document.storage_path)
