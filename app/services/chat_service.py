@@ -28,8 +28,8 @@ class ChatService:
         )
 
     async def generate_response(
-        self, conversation_id: str, user_message: str, user_id: str
-) -> Dict[str, Any]:
+        self, conversation_id: str, user_message: str, user_id: str, tenant_id: str
+    ) -> Dict[str, Any]:
         # Check for skill invocation
         stripped = user_message.strip()
         if stripped.startswith("/skill"):
@@ -57,16 +57,18 @@ class ChatService:
             except Exception as e:
                 return f"Error executing skill {skill_name}: {str(e)}"
 
-        # 1. Verify the conversation exists and belongs to the user
+        # 1. Verify the conversation exists and belongs to the user and tenant
         conversation = self.db.query(Conversation).filter(
             Conversation.id == conversation_id,
-            Conversation.user_id == user_id
+            Conversation.user_id == user_id,
+            Conversation.tenant_id == tenant_id
         ).first()
         if not conversation:
             # If conversation not found, we can create a new one or return an error.
             # For now, we'll create a new conversation.
             conversation = Conversation(
                 id=conversation_id,
+                tenant_id=tenant_id,
                 user_id=user_id,
                 title="New Conversation",
             )
@@ -88,7 +90,7 @@ class ChatService:
 
         # 3. Retrieve relevant context using RAG
         # Get the user's documents
-        user_docs = await self.document_service.list_documents(user_id)
+        user_docs = await self.document_service.list_documents(user_id, tenant_id)
         document_ids = [doc["id"] for doc in user_docs]
         
         # Retrieve relevant chunks from the RAG service
@@ -117,14 +119,15 @@ class ChatService:
                 "similarity": similarity
             }
             citations.append(citation)
-        context = "\\n\\n".join(context_parts) if context_parts else "No relevant context found."
+        context = "\n\n".join(context_parts) if context_parts else "No relevant context found."
         
         # 5. Prepare conversation history for the model
         # We'll get the last few messages from the conversation
         # For now, we'll get the last 5 messages (excluding the current user message we just saved)
         # We'll get the conversation messages from the database
         messages = self.db.query(Message).filter(
-            Message.conversation_id == conversation_id
+            Message.conversation_id == conversation_id,
+            Message.tenant_id == tenant_id  # Add tenant_id filter
         ).order_by(Message.created_at.desc()).limit(5).all()
         # Reverse to get chronological order
         messages = list(reversed(messages))
@@ -148,6 +151,7 @@ class ChatService:
         assistant_msg = Message(
             id=f"msg-{conversation_id}-{assistant_msg_count}-assistant",
             conversation_id=conversation_id,
+            tenant_id=tenant_id,  # Add tenant_id
             role="assistant",
             content=response_content
         )
@@ -159,3 +163,4 @@ class ChatService:
             "response": response_content,
             "citations": citations
         }
+

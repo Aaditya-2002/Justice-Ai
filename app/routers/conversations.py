@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import List, Optional
 from app.services.conversation_service import ConversationService
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_current_tenant_id
 from app.core.database import get_db
 from sqlalchemy.orm import Session
 from app.models.user import User
@@ -30,8 +30,10 @@ async def create_conversation(
     conv_service: ConversationService = Depends(get_conversation_service),
     current_user: User = Depends(get_current_user),
 ):
+    tenant_id = get_current_tenant_id()
     return await conv_service.create_conversation(
         user_id=str(current_user.id),
+        tenant_id=tenant_id,
         title=conversation.title,
     )
 
@@ -40,7 +42,8 @@ async def list_conversations(
     conv_service: ConversationService = Depends(get_conversation_service),
     current_user: User = Depends(get_current_user),
 ):
-    return await conv_service.list_conversations(user_id=str(current_user.id))
+    tenant_id = get_current_tenant_id()
+    return await conv_service.list_conversations(user_id=str(current_user.id), tenant_id=tenant_id)
 
 @router.get("/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation(
@@ -48,9 +51,11 @@ async def get_conversation(
     conv_service: ConversationService = Depends(get_conversation_service),
     current_user: User = Depends(get_current_user),
 ):
+    tenant_id = get_current_tenant_id()
     conversation = await conv_service.get_conversation(
         conversation_id=conversation_id,
         user_id=str(current_user.id),
+        tenant_id=tenant_id,
     )
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -63,10 +68,12 @@ async def update_conversation(
     conv_service: ConversationService = Depends(get_conversation_service),
     current_user: User = Depends(get_current_user),
 ):
+    tenant_id = get_current_tenant_id()
     return await conv_service.update_conversation(
         conversation_id=conversation_id,
         title=conversation_update.title,
         user_id=str(current_user.id),
+        tenant_id=tenant_id,
     )
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -75,8 +82,11 @@ async def delete_conversation(
     conv_service: ConversationService = Depends(get_conversation_service),
     current_user: User = Depends(get_current_user),
 ):
+    tenant_id = get_current_tenant_id()
     await conv_service.delete_conversation(
         conversation_id=conversation_id,
         user_id=str(current_user.id),
+        tenant_id=tenant_id,
     )
     return None
+

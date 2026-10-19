@@ -2,10 +2,12 @@ from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Text
 from sqlalchemy.sql import func
 from app.models.base import Base
 
+
 class Document(Base):
     __tablename__ = "documents"
 
     id = Column(String, primary_key=True, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     filename = Column(String, nullable=False)
     content_type = Column(String, nullable=False)

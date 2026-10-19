@@ -50,7 +50,7 @@ class DocumentService:
             text += paragraph.text + "\n"
         return text
 
-    async def upload_document(self, user_id: str, file: UploadFile) -> dict:
+    async def upload_document(self, user_id: str, tenant_id: str, file: UploadFile) -> dict:
         # Save the uploaded file
         storage_path = self._save_upload_file(file)
         # Extract text based on file type
@@ -70,6 +70,7 @@ class DocumentService:
         document = Document(
             id=str(uuid.uuid4()),
             user_id=user_id,
+            tenant_id=tenant_id,
             filename=file.filename,
             content_type=file.content_type,
             size=os.path.getsize(storage_path),
@@ -81,7 +82,7 @@ class DocumentService:
         self.db.commit()
         self.db.refresh(document)
         # Process document with RAG
-        await self.rag_service.process_document(document.id, document.extracted_text)
+        await self.rag_service.process_document(document.id, document.extracted_text, tenant_id)
         return {
             "id": document.id,
             "filename": document.filename,
@@ -91,8 +92,11 @@ class DocumentService:
             "updated_at": document.updated_at.isoformat() if document.updated_at else None,
         }
 
-    async def list_documents(self, user_id: str) -> List[dict]:
-        documents = self.db.query(Document).filter(Document.user_id == user_id).all()
+    async def list_documents(self, user_id: str, tenant_id: str) -> List[dict]:
+        documents = self.db.query(Document).filter(
+            Document.user_id == user_id,
+            Document.tenant_id == tenant_id
+        ).all()
         return [
             {
                 "id": doc.id,
@@ -105,10 +109,11 @@ class DocumentService:
             for doc in documents
         ]
 
-    async def get_document(self, document_id: str, user_id: str) -> Optional[dict]:
+    async def get_document(self, document_id: str, user_id: str, tenant_id: str) -> Optional[dict]:
         document = self.db.query(Document).filter(
             Document.id == document_id,
-            Document.user_id == user_id
+            Document.user_id == user_id,
+            Document.tenant_id == tenant_id
         ).first()
         if not document:
             return None
@@ -121,10 +126,11 @@ class DocumentService:
             "updated_at": document.updated_at.isoformat() if document.updated_at else None,
         }
 
-    async def delete_document(self, document_id: str, user_id: str) -> bool:
+    async def delete_document(self, document_id: str, user_id: str, tenant_id: str) -> bool:
         document = self.db.query(Document).filter(
             Document.id == document_id,
-            Document.user_id == user_id
+            Document.user_id == user_id,
+            Document.tenant_id == tenant_id
         ).first()
         if not document:
             return False
@@ -134,3 +140,4 @@ class DocumentService:
         self.db.delete(document)
         self.db.commit()
         return True
+

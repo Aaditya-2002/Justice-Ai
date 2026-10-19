@@ -75,7 +75,6 @@ class RAGService:
         
         return chunks
 
-
     def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
         """Compute cosine similarity between two vectors."""
         dot_product = sum(a * b for a, b in zip(vec1, vec2))
@@ -85,8 +84,16 @@ class RAGService:
             return 0.0
         return dot_product / (norm_a * norm_b)
 
-    async def process_document(self, document_id: str, extracted_text: str) -> bool:
+    async def process_document(self, document_id: str, extracted_text: str, tenant_id: str) -> bool:
         """Process a document: chunk it, generate embeddings, and store chunks."""
+        # Verify document belongs to tenant
+        document = self.db.query(Document).filter(
+            Document.id == document_id,
+            Document.tenant_id == tenant_id
+        ).first()
+        if not document:
+            return False
+            
         # Delete any existing chunks for this document
         self.db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).delete()
         
@@ -99,16 +106,15 @@ class RAGService:
         # Store each chunk with its embedding
         for idx, chunk_text in enumerate(chunks):
             embedding = await self._get_embedding(chunk_text)
-            # Store embedding as JSON string
-            embedding_json = json.dumps(embedding)
             
             chunk = DocumentChunk(
                 id=f"{document_id}-chunk-{idx}",  # Simple ID, in real app use UUID
                 document_id=document_id,
+                tenant_id=tenant_id,  # Add tenant_id to chunks for direct filtering
                 chunk_index=idx,
                 chunk_text=chunk_text,
-                embedding=embedding_json,
-                chunk_metadata=json.dumps({})  # Empty metadata for now
+                embedding=embedding,  # Store as list of floats (will be converted to Vector)
+                chunk_metadata={}  # Empty metadata for now
             )
             self.db.add(chunk)
         
@@ -116,8 +122,8 @@ class RAGService:
         return True
 
     async def retrieve_relevant_chunks(
-        self, query: str, document_ids: Optional[List[str]] = None, limit: int = None
-) -> List[Dict[str, Any]]:
+        self, query: str, document_ids: Optional[List[str]] = None, tenant_id: Optional[str] = None, limit: int = None
+    ) -> List[Dict[str, Any]]:
         """Retrieve relevant chunks for a query.
         
         Returns a list of dictionaries containing the chunk, similarity score, 
@@ -132,6 +138,9 @@ class RAGService:
         db_query = self.db.query(DocumentChunk, Document.filename).join(
             Document, DocumentChunk.document_id == Document.id
         )
+        # Filter by tenant_id if provided
+        if tenant_id is not None:
+            db_query = db_query.filter(Document.tenant_id == tenant_id)
         if document_ids is not None:
             if len(document_ids) == 0:
                 return []  # No documents to search
@@ -143,9 +152,10 @@ class RAGService:
         # Compute similarity for each chunk
         chunk_similarities = []  # Will be list of dicts
         for chunk, filename in chunk_results:
-            if chunk.embedding:
+            if chunk.embedding is not None:
                 try:
-                    chunk_embedding = json.loads(chunk.embedding)
+                    # chunk.embedding is already a list of floats from Vector column
+                    chunk_embedding = chunk.embedding
                     similarity = self._cosine_similarity(query_embedding, chunk_embedding)
                     chunk_similarities.append({
                         "chunk": chunk,
@@ -153,7 +163,7 @@ class RAGService:
                         "document_id": chunk.document_id,
                         "filename": filename
                     })
-                except (json.JSONDecodeError, TypeError):
+                except (TypeError, AttributeError):
                     # If embedding is invalid, skip
                     continue
         
@@ -163,8 +173,19 @@ class RAGService:
         # Return top limit
         return chunk_similarities[:limit]
 
-    async def delete_document_chunks(self, document_id: str) -> bool:
+    async def delete_document_chunks(self, document_id: str, tenant_id: str) -> bool:
         """Delete all chunks for a document."""
-        self.db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).delete()
+        # Verify document belongs to tenant
+        document = self.db.query(Document).filter(
+            Document.id == document_id,
+            Document.tenant_id == tenant_id
+        ).first()
+        if not document:
+            return False
+        self.db.query(DocumentChunk).filter(
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.tenant_id == tenant_id
+        ).delete()
         self.db.commit()
         return True
+

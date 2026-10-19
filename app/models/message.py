@@ -8,6 +8,7 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(String, primary_key=True, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False)
     role = Column(String, nullable=False)  # "user" or "assistant"
     content = Column(Text, nullable=False)

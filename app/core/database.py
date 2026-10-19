@@ -3,9 +3,17 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
+
+def get_connect_args(database_url: str) -> dict:
+    """Return connect_args based on database type."""
+    if database_url.startswith("sqlite"):
+        return {"check_same_thread": False}
+    return {}
+
+
 # Create the SQLAlchemy engine
 engine = create_engine(
-    settings.DATABASE_URL, connect_args={"check_same_thread": False}
+    settings.DATABASE_URL, connect_args=get_connect_args(settings.DATABASE_URL)
 )
 
 # Create a session local class

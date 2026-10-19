@@ -8,6 +8,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(String, primary_key=True, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     title = Column(String, nullable=True)
     # Relationship to messages

@@ -29,6 +29,7 @@ async def register(
             "id": user.id,
             "username": user.username,
             "email": user.email,
+            "tenant_id": user.tenant_id,
             "message": "User registered successfully",
         }
     except ValueError as e:
@@ -44,16 +45,17 @@ async def login(
 ):
     username = form_data.username
     password = form_data.password
-    token = auth_service.login_user(username, password)
-    if not token:
+    result = auth_service.login_user(username, password)
+    if not result:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return {
-        "access_token": token,
+        "access_token": result["access_token"],
         "token_type": "bearer",
+        "tenant_id": result["tenant_id"],
     }
 
 @router.post("/logout", response_model=dict)
@@ -68,5 +70,7 @@ async def read_current_user(current_user: User = Depends(get_current_user)):
         "id": current_user.id,
         "username": current_user.username,
         "email": current_user.email,
+        "tenant_id": current_user.tenant_id,
         "is_active": current_user.is_active,
     }
+

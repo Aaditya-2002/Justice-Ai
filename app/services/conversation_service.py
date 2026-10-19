@@ -10,10 +10,11 @@ class ConversationService:
     def __init__(self, db: Session = None):
         self.db = db or next(get_db())
 
-    async def create_conversation(self, user_id: str, title: Optional[str] = None) -> dict:
+    async def create_conversation(self, user_id: str, tenant_id: str, title: Optional[str] = None) -> dict:
         # Create a new conversation for the user
         conversation = Conversation(
             id=str(uuid.uuid4()),
+            tenant_id=tenant_id,
             user_id=user_id,
             title=title or "New Conversation",
         )
@@ -27,8 +28,11 @@ class ConversationService:
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
         }
 
-    async def list_conversations(self, user_id: str) -> List[dict]:
-        conversations = self.db.query(Conversation).filter(Conversation.user_id == user_id).all()
+    async def list_conversations(self, user_id: str, tenant_id: str) -> List[dict]:
+        conversations = self.db.query(Conversation).filter(
+            Conversation.user_id == user_id,
+            Conversation.tenant_id == tenant_id
+        ).all()
         return [
             {
                 "id": conv.id,
@@ -39,10 +43,11 @@ class ConversationService:
             for conv in conversations
         ]
 
-    async def get_conversation(self, conversation_id: str, user_id: str) -> Optional[dict]:
+    async def get_conversation(self, conversation_id: str, user_id: str, tenant_id: str) -> Optional[dict]:
         conversation = self.db.query(Conversation).filter(
             Conversation.id == conversation_id,
-            Conversation.user_id == user_id
+            Conversation.user_id == user_id,
+            Conversation.tenant_id == tenant_id
         ).first()
         if conversation:
             return {
@@ -54,11 +59,12 @@ class ConversationService:
         return None
 
     async def update_conversation(
-        self, conversation_id: str, title: str, user_id: str
+        self, conversation_id: str, title: str, user_id: str, tenant_id: str
     ) -> dict:
         conversation = self.db.query(Conversation).filter(
             Conversation.id == conversation_id,
-            Conversation.user_id == user_id
+            Conversation.user_id == user_id,
+            Conversation.tenant_id == tenant_id
         ).first()
         if not conversation:
             raise ValueError("Conversation not found or access denied")
@@ -72,11 +78,13 @@ class ConversationService:
             "updated_at": conversation.updated_at.isoformat() if conversation.updated_at else None,
         }
 
-    async def delete_conversation(self, conversation_id: str, user_id: str) -> None:
+    async def delete_conversation(self, conversation_id: str, user_id: str, tenant_id: str) -> None:
         conversation = self.db.query(Conversation).filter(
             Conversation.id == conversation_id,
-            Conversation.user_id == user_id
+            Conversation.user_id == user_id,
+            Conversation.tenant_id == tenant_id
         ).first()
         if conversation:
             self.db.delete(conversation)
             self.db.commit()
+
