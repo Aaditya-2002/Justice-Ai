@@ -1,0 +1,117 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+#  Usually these files are written by a python script from a temporary
+#  directory before pyinstaller.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# SQLite
+*.db
+
+# Env
+.env.example
+
+# Kafka
+*.ksql
+*.avro
+
+# Docker
+docker-compose.override.yml
+
+# Kubernetes
+*.k8s.yaml
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+
+# Vercel
+.vercel
+
+# Xcode
+*.xcodeproj
+
+# JetBrains
+.idea/
+*.iml
+
+# Misc
+/*.zip
+/*.tar.gz
+/*.tar.bz2
+/*.tar.xz
+/*.tz
+/*.gz
+/*.bz2
+/*.xz
+/*.Z
+/*.7z
+/*.rar
