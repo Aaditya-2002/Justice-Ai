@@ -217,4 +217,40 @@ trivy image justice-ai:latest
 
 ---
 
+## Operating Modes and Security
+
+### Mode A — Normal Operation
+- External LLM used for primary reasoning; all security controls active
+
+### Mode B — Fallback Operation  
+- Security controls unchanged; fallback preserves tenant isolation
+- No fabricated citations; evidence insufficiency stated explicitly
+
+## Operating Modes and Security
+
+### Mode A — Normal Operation (Large LLM Available)
+- External LLM used for primary reasoning; all security controls active
+- Tenant isolation enforced via JWT `tenant_id` claim
+- All tool calls authorized through SkillRegistry permission checks
+- RAG evidence scoped by tenant_id; no cross-tenant leakage
+- External LLM API calls subject to rate limits and timeouts
+- Fallback activates only after exhausting retry budget
+- Debug/logging metadata privacy-aware; no sensitive data in logs
+
+### Mode B — Fallback Operation (Large LLM Unavailable)
+- All security controls persist unchanged from Mode A
+- Authentication, authorization, tenant isolation active
+- No tool execution bypass; same permission checks apply
+- RAG evidence still scoped by tenant_id
+- Response clearly states LLM unavailability
+- No fabricated citations or sources
+- Evidence insufficiency stated explicitly
+
+### Security Critical Distinction
+- Fallback is availability mechanism, NOT default inference strategy
+- Security policies never relaxed regardless of mode
+- Prompt injection protections active in both modes
+- Unsafe retrieved content validated in both modes
+- SSRF and URL injection protections active in both modes
+
 *Security posture reviewed: 2026-10-20 — All Sprint 1 requirements met*

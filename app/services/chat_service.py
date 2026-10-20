@@ -11,6 +11,8 @@ from app.services.document_service import DocumentService
 from app.core.model_provider import ModelProviderFactory
 from app.models.user import User
 from app.skills.registry import skill_registry
+from app.orchestration.graph import run_graph, skill_invocation_node
+from app.orchestration.state import create_initial_state
 
 
 class ChatService:
@@ -35,7 +37,6 @@ class ChatService:
         if stripped.startswith("/skill"):
             parts = stripped.split()
             if parts[0] != "/skill":
-                # This should not happen because we checked startswith, but just in case
                 return "Invalid skill invocation. Usage: /skill <skill_name> <json_input>"
             if len(parts) < 2:
                 return "Invalid skill invocation. Usage: /skill <skill_name> <json_input>"
@@ -48,11 +49,9 @@ class ChatService:
             except json.JSONDecodeError:
                 return "Invalid JSON input for skill."
             # Execute the skill
-            # Get the user object
             user = self.db.query(User).filter(User.id == user_id).first()
             try:
                 result = skill_registry.execute_skill(skill_name, input_data, user=user)
-                # Format the result as a string to return
                 return f"Skill {skill_name} result: {json.dumps(result, indent=2)}"
             except Exception as e:
                 return f"Error executing skill {skill_name}: {str(e)}"
@@ -77,7 +76,6 @@ class ChatService:
             self.db.refresh(conversation)
 
         # 2. Save the user message
-        # Get message count for this conversation to generate ID
         user_msg_count = self.db.query(Message).filter(Message.conversation_id == conversation_id).count()
         user_msg = Message(
             id=f"msg-{conversation_id}-{user_msg_count}-user",
@@ -89,79 +87,88 @@ class ChatService:
         self.db.add(user_msg)
         self.db.commit()
 
-        # 3. Retrieve relevant context using RAG
-        # Get the user's documents
-        user_docs = await self.document_service.list_documents(user_id, tenant_id)
-        document_ids = [doc["id"] for doc in user_docs]
-        
-        # Retrieve relevant chunks from the RAG service
-        chunk_infos = []
-        if document_ids:
-            chunk_infos = await self.rag_service.retrieve_relevant_chunks(
-                user_message, document_ids=document_ids
+        # 3. Use LangGraph orchestration for the rest
+        try:
+            # Run the LangGraph orchestration
+            result = await run_graph(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                tenant_id=tenant_id,
+                user_message=user_message,
+                config={"db": self.db},
             )
-        # Else, if no documents, chunk_infos remains empty
-        
-        # 4. Build context string from the chunks and prepare citations
-        context_parts = []
-        citations = []
-        for chunk_info in chunk_infos:
-            chunk = chunk_info["chunk"]
-            similarity = chunk_info["similarity"]
-            document_id = chunk_info["document_id"]
-            filename = chunk_info["filename"]
-            context_parts.append(f"[Relevant chunk (similarity: {similarity:.2f})]: {chunk.chunk_text}")
-            # Build a citation object
-            citation = {
-                "document_id": document_id,
-                "filename": filename,
-                "chunk_index": chunk.chunk_index,
-                "chunk_text": chunk.chunk_text,
-                "similarity": similarity
-            }
-            citations.append(citation)
-        context = "\n\n".join(context_parts) if context_parts else "No relevant context found."
-        
-        # 5. Prepare conversation history for the model
-        # We'll get the last few messages from the conversation
-        # For now, we'll get the last 5 messages (excluding the current user message we just saved)
-        # We'll get the conversation messages from the database
-        messages = self.db.query(Message).filter(
-            Message.conversation_id == conversation_id,
-            Message.tenant_id == tenant_id  # Add tenant_id filter
-        ).order_by(Message.created_at.desc()).limit(5).all()
-        # Reverse to get chronological order
-        messages = list(reversed(messages))
-        conversation_history = [
-            {"role": msg.role, "content": msg.content}
-            for msg in messages
-        ]
-        
-        # 6. Generate a response using the model provider
-        response_content = await self.model_provider.generate_response(
-            prompt=user_message,
-            conversation_history=conversation_history,
-            context=context,
-            # We don't have skills yet, so we pass an empty list
-            skills=[]
-        )
-        
+            
+            response_content = result.get("response", "No response generated")
+            citations = result.get("citations", [])
+            print(f"DEBUG: LangGraph result - response: {response_content[:100] if response_content else 'None'}, citations: {len(citations)}")
+            
+        except Exception as e:
+            # Fallback to legacy implementation if LangGraph fails
+            import traceback
+            print(f"DEBUG: LangGraph exception caught: {type(e).__name__}: {e}")
+            print(f"DEBUG: Exception args: {e.args}")
+            traceback.print_exc()
+            response_content = await self._legacy_generate_response(
+                conversation_id, user_message, user_id, tenant_id
+            )
+            citations = []
+
         # 7. Save the assistant response
-        # Get message count for this conversation to generate ID (after adding user message)
         assistant_msg_count = self.db.query(Message).filter(Message.conversation_id == conversation_id).count()
         assistant_msg = Message(
             id=f"msg-{conversation_id}-{assistant_msg_count}-assistant",
             conversation_id=conversation_id,
-            tenant_id=tenant_id,  # Add tenant_id
+            tenant_id=tenant_id,
             role="assistant",
             content=response_content
         )
         self.db.add(assistant_msg)
         self.db.commit()
-        
+
         # 8. Return the response and citations
         return {
             "response": response_content,
             "citations": citations
         }
 
+    async def _legacy_generate_response(
+        self, conversation_id: str, user_message: str, user_id: str, tenant_id: str
+    ) -> str:
+        """Legacy response generation (fallback)."""
+        # 3. Retrieve relevant context using RAG
+        user_docs = await self.document_service.list_documents(user_id, tenant_id)
+        document_ids = [doc["id"] for doc in user_docs]
+
+        chunk_infos = []
+        if document_ids:
+            chunk_infos = await self.rag_service.retrieve_relevant_chunks(
+                user_message, document_ids=document_ids
+            )
+
+        context_parts = []
+        for chunk_info in chunk_infos:
+            chunk = chunk_info["chunk"]
+            similarity = chunk_info["similarity"]
+            context_parts.append(f"[Relevant chunk (similarity: {similarity:.2f})]: {chunk.chunk_text}")
+        context = "\n\n".join(context_parts) if context_parts else "No relevant context found."
+
+        # 5. Prepare conversation history
+        messages = self.db.query(Message).filter(
+            Message.conversation_id == conversation_id,
+            Message.tenant_id == tenant_id
+        ).order_by(Message.created_at.desc()).limit(5).all()
+        messages = list(reversed(messages))
+        conversation_history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in messages
+        ]
+
+        # 6. Generate response
+        response_content = await self.model_provider.generate_response(
+            prompt=user_message,
+            conversation_history=conversation_history,
+            context=context,
+            skills=[]
+        )
+
+        return response_content

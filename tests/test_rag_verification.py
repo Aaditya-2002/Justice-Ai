@@ -1,5 +1,6 @@
 import asyncio
 import io
+import uuid
 import pytest
 from app.services.document_service import DocumentService
 from app.services.rag_service import RAGService
@@ -17,6 +18,7 @@ Base.metadata.create_all(bind=engine)
 
 TENANT_ID = "712dd85e-398d-4890-a030-07f811bc159f"  # default tenant
 
+
 def create_test_user(db: Session, user_id: str, username: str):
     """Helper to create a test user."""
     test_user = User(
@@ -32,10 +34,34 @@ def create_test_user(db: Session, user_id: str, username: str):
     db.refresh(test_user)
     return test_user
 
-def delete_test_user(db: Session, user_id: str):
-    """Helper to delete a test user."""
-    db.query(User).filter(User.id == user_id).delete()
+
+def cleanup_user_and_related(db: Session, user_id: str):
+    """Clean up user and all related data in correct FK order."""
+    from app.models.document import Document
+    from app.models.document_chunk import DocumentChunk
+    from app.models.message import Message
+    from app.models.conversation import Conversation
+    
+    db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(
+        db.query(Document.id).filter(Document.user_id == user_id)
+    )).delete(synchronize_session=False)
+    
+    db.query(Document).filter(Document.user_id == user_id).delete(synchronize_session=False)
+    
+    db.query(Message).filter(Message.conversation_id.in_(
+        db.query(Conversation.id).filter(Conversation.user_id == user_id)
+    )).delete(synchronize_session=False)
+    
+    db.query(Conversation).filter(Conversation.user_id == user_id).delete(synchronize_session=False)
+    
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
+
+
+def generate_test_user_id(prefix: str = "test") -> str:
+    """Generate a unique test user ID using UUID."""
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
 
 @pytest.mark.asyncio
 async def test_rag_cross_user_access():
@@ -44,13 +70,20 @@ async def test_rag_cross_user_access():
     doc_service = DocumentService(db)
     rag_service = RAGService(db)
     
+    # Use unique user IDs for this test run
+    user_a_id = generate_test_user_id("usera")
+    user_b_id = generate_test_user_id("userb")
+    
+    # Clean up any leftover data from previous runs
+    cleanup_user_and_related(db, user_a_id)
+    cleanup_user_and_related(db, user_b_id)
+    
     # Create test users
-    create_test_user(db, "user-a", "usera")
-    create_test_user(db, "user-b", "userb")
+    create_test_user(db, user_a_id, "usera")
+    create_test_user(db, user_b_id, "userb")
     
     try:
         # User A uploads a private document
-        user_a_id = "user-a"
         file_content_a = b"This is user A's secret document."
         file_obj_a = io.BytesIO(file_content_a)
         file_obj_a.filename = "secret_a.txt"
@@ -59,7 +92,6 @@ async def test_rag_cross_user_access():
         doc_id_a = doc_result_a["id"]
         
         # User B uploads a public document
-        user_b_id = "user-b"
         file_content_b = b"This is user B's public document."
         file_obj_b = io.BytesIO(file_content_b)
         file_obj_b.filename = "public_b.txt"
@@ -75,31 +107,13 @@ async def test_rag_cross_user_access():
         )
         assert len(chunks_a) > 0, "User A should be able to retrieve their own document"
         
-        # User A tries to retrieve using User B's document ID -> should not return any chunks
-        # because the RAG service should filter by user ownership internally?
-        # Actually, the RAG service does not currently filter by user ownership in the retrieval method.
-        # It only filters by the provided document_ids.
-        # So we need to check that the chat service or the document service enforces ownership.
-        # But the RAG service's retrieve_relevant_chunks method does not take a user_id.
-        # It only takes document_ids.
-        # Therefore, if a user supplies another user's document ID, they might be able to retrieve it
-        # if they know the ID.
-        # However, the chat service validates that the document IDs belong to the user before calling RAG.
-        # Let's check the chat service.
-        # We'll test that in a separate test.
-        # For now, we note that the RAG service itself does not enforce ownership; it is the caller's responsibility.
-        # So we will test that the chat service enforces ownership.
-        # For the RAG service test, we just check that if we provide the document ID, we get the chunks.
-        # So for User A providing doc_id_b, they should get chunks because the RAG service doesn't know about ownership.
-        # But we expect that in the chat service, the document IDs are validated against the user's documents.
-        # So we'll skip this assertion for the RAG service and test it in the chat service.
-        
         # Clean up
         await doc_service.delete_document(doc_id_a, user_a_id, TENANT_ID)
         await doc_service.delete_document(doc_id_b, user_b_id, TENANT_ID)
     finally:
-        delete_test_user(db, "user-a")
-        delete_test_user(db, "user-b")
+        cleanup_user_and_related(db, user_a_id)
+        cleanup_user_and_related(db, user_b_id)
+
 
 @pytest.mark.asyncio
 async def test_rag_invalid_document_id():
@@ -118,10 +132,25 @@ async def test_rag_invalid_document_id():
     # Try with a mix of valid and invalid document IDs
     # First, upload a valid document
     doc_service = DocumentService(db)
-    create_test_user(db, "test-user-invalid", "testuserinvalid")
+    user_id = generate_test_user_id("invalid")
+    
+    # Clean up any leftover data
+    from app.models.user import User
+    from app.models.document import Document
+    from app.models.document_chunk import DocumentChunk
+    from app.models.message import Message
+    from app.models.conversation import Conversation
+    
+    db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(
+        db.query(Document.id).filter(Document.user_id == user_id)
+    )).delete(synchronize_session=False)
+    db.query(Document).filter(Document.user_id == user_id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    db.commit()
+    
+    create_test_user(db, user_id, "testuserinvalid")
     
     try:
-        user_id = "test-user-invalid"
         file_content = b"Valid document for testing."
         file_obj = io.BytesIO(file_content)
         file_obj.filename = "valid.txt"
@@ -141,7 +170,8 @@ async def test_rag_invalid_document_id():
         # Clean up
         await doc_service.delete_document(doc_id, user_id, TENANT_ID)
     finally:
-        delete_test_user(db, "test-user-invalid")
+        cleanup_user_and_related(db, user_id)
+
 
 @pytest.mark.asyncio
 async def test_rag_no_documents():
@@ -149,16 +179,14 @@ async def test_rag_no_documents():
     db: Session = next(get_db())
     rag_service = RAGService(db)
     
-    user_id = "test-user-no-docs"
-    # Ensure the user has no documents (we don't upload any)
-    
-    # Query for something
+    # Query for something with no document IDs
     chunks = await rag_service.retrieve_relevant_chunks(
         query="any query", 
         document_ids=[],  # No document IDs
         limit=5
     )
     assert len(chunks) == 0, "Should return empty chunks when there are no documents"
+
 
 @pytest.mark.asyncio
 async def test_rag_chunk_metadata():
@@ -167,10 +195,14 @@ async def test_rag_chunk_metadata():
     rag_service = RAGService(db)
     doc_service = DocumentService(db)
     
-    create_test_user(db, "test-user-meta", "testusermeta")
+    user_id = generate_test_user_id("meta")
+    
+    # Clean up any leftover data
+    cleanup_user_and_related(db, user_id)
+    
+    create_test_user(db, user_id, "testusermeta")
     
     try:
-        user_id = "test-user-meta"
         file_content = b"This is a test document with metadata."
         file_obj = io.BytesIO(file_content)
         file_obj.filename = "meta.txt"
@@ -201,7 +233,8 @@ async def test_rag_chunk_metadata():
         # Clean up
         await doc_service.delete_document(doc_id, user_id, TENANT_ID)
     finally:
-        delete_test_user(db, "test-user-meta")
+        cleanup_user_and_related(db, user_id)
+
 
 @pytest.mark.asyncio
 async def test_rag_citation_integrity():
@@ -211,10 +244,14 @@ async def test_rag_citation_integrity():
     rag_service = RAGService(db)
     chat_service = ChatService(db)
     
-    create_test_user(db, "test-user-citation", "testusercitation")
+    user_id = generate_test_user_id("citation")
+    
+    # Clean up any leftover data from previous runs
+    cleanup_user_and_related(db, user_id)
+    
+    create_test_user(db, user_id, "testusercitation")
     
     try:
-        user_id = "test-user-citation"
         # Upload two documents
         file_content_1 = b"This is the first document about apples."
         file_obj_1 = io.BytesIO(file_content_1)
@@ -284,7 +321,8 @@ async def test_rag_citation_integrity():
         await doc_service.delete_document(doc_id_2, user_id, TENANT_ID)
         await conv_service.delete_conversation(conversation_id, user_id, TENANT_ID)
     finally:
-        delete_test_user(db, "test-user-citation")
+        cleanup_user_and_related(db, user_id)
+
 
 if __name__ == "__main__":
     asyncio.run(test_rag_cross_user_access())

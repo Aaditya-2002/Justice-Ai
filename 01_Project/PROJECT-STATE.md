@@ -13,6 +13,43 @@
 
 ---
 
+
+## Operating Modes (Sprint 2)
+
+### Current Mode: FALLBACK (Mode B)
+- `MODEL_PROVIDER=mock` (configured in .env)
+- External LLM API not configured
+- All tests run in fallback mode
+- RAG pipeline functional via mock embeddings and sentence-transformers
+- Checkpointing works synchronously (PostgresSaver + graph.invoke)
+- UniqueViolation test isolation issue: being investigated
+- NotImplementedError from aget_tuple: resolved (switched to synchronous invoke)
+
+### Target Mode: NORMAL (Mode A) - Sprint 2 Goal
+- `MODEL_PROVIDER=openai` or `anthropic` (to be configured)
+- `PRIMARY_LLM_API_KEY` configured in environment
+- Full LangGraph graph execution with external LLM
+- Streaming responses (Sprint 2)
+- Real citation generation from external LLM
+- Provider failure and fallback activation testing
+
+### Mode Transition Status
+- [ ] Configure PRIMARY_LLM_API_KEY in .env
+- [ ] Test Mode A execution with real provider
+- [ ] Verify fallback activates on API failure
+- [ ] Test recovery from fallback to normal mode
+- [ ] Mode A checkpointing compatibility verified
+
+### Known Issues Affecting Mode Transition
+- ISSUE-002: Real LLM Provider Not Configured (SECURITY.md)
+  - Only `mock` and `sentence-transformers` providers work
+  - OpenAI/Anthropic not integrated
+  - Target Fix: Sprint 2
+- test_rag_citation_integrity: Citation count assertion fails (0 vs 2)
+  - Root cause: ValidationError in LangGraph state (messages field type mismatch)
+  - Workaround: Legacy fallback implementation functional
+  - Target Fix: State schema validation (Sprint 2)
+
 ## Verified Working (Evidence-Based)
 
 ### Infrastructure ✅
@@ -155,3 +192,41 @@ Working tree: CLEAN (no uncommitted changes)
 ---
 
 *Updated: 2026-10-20 02:30 IST — All Sprint 1 acceptance criteria met*
+
+
+## Operating Modes (Sprint 2)
+
+### Current Mode: FALLBACK (Mode B)
+- `MODEL_PROVIDER=mock` (configured in .env)
+- External LLM API not configured
+- All tests run in fallback mode
+- RAG pipeline functional via mock embeddings and sentence-transformers
+- Checkpointing works synchronously (PostgresSaver + graph.invoke)
+- UniqueViolation test isolation issue: being investigated
+- NotImplementedError from aget_tuple: resolved (switched to synchronous invoke)
+
+### Target Mode: NORMAL (Mode A) - Sprint 2 Goal
+- `MODEL_PROVIDER=openai` or `anthropic` (to be configured)
+- `PRIMARY_LLM_API_KEY` configured in environment
+- Full LangGraph graph execution with external LLM
+- Streaming responses (Sprint 2)
+- Real citation generation from external LLM
+- Provider failure and fallback activation testing
+
+### Mode Transition Status
+- [ ] Configure PRIMARY_LLM_API_KEY in .env
+- [ ] Test Mode A execution with real provider
+- [ ] Verify fallback activates on API failure
+- [ ] Test recovery from fallback to normal mode
+- [ ] Mode A checkpointing compatibility verified
+
+### Known Issues Affecting Mode Transition
+- ISSUE-002: Real LLM Provider Not Configured (SECURITY.md)
+  - Only `mock` and `sentence-transformers` providers work
+  - OpenAI/Anthropic not integrated
+  - Target Fix: Sprint 2
+- test_rag_citation_integrity: Citation count assertion fails (0 vs 2)
+  - Root cause: ValidationError in LangGraph state (messages field type mismatch)
+  - Workaround: Legacy fallback implementation functional
+  - Target Fix: State schema validation (Sprint 2)
+

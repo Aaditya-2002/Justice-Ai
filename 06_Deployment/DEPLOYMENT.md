@@ -65,6 +65,33 @@ MAX_UPLOAD_SIZE=10485760
 DEFAULT_TENANT_ID=default
 ```
 
+
+# Operating Mode Configuration
+
+### MODE_A — Normal Operation (Large LLM)
+- `MODEL_PROVIDER=openai` or `anthropic` (configured API key required)
+- `PRIMARY_LLM_MODEL=gpt-4o-mini` or equivalent
+- `PRIMARY_LLM_API_KEY` in environment (never in source code)
+- `RETRY_BUDGET=3` (max retries before fallback)
+- `FALLBACK_TIMEOUT_SECONDS=30` (per-request timeout)
+
+### MODE_B — Fallback Operation (Large LLM Unavailable)
+- `MODEL_PROVIDER=mock` (deterministic mock responses)
+- `PRIMARY_LLM_MODEL` not required
+- No API key needed
+- `RETRY_BUDGET=0` (no retries; immediate fallback)
+- `FALLBACK_TIMEOUT_SECONDS=0` (no timeout needed)
+
+#### Mode Switching
+- System automatically switches from Mode A to Mode B when:
+  - LLM API returns non-2xx status after all retries
+  - API timeout exceeded per-request
+  - Rate limit exceeded and budget exhausted
+- System recovers to Mode A when:
+  - API returns 2xx status on retry
+  - Configuration changed to re-enable provider
+- Manual override via `JUSTICE_AI_MODE=fallback` env var (Sprint 2)
+
 ### Optional
 ```
 # Redis (if separate)
@@ -469,3 +496,30 @@ psql -h $DB_HOST -U $DB_USER -d justice_ai < backup_latest.sql
 ---
 
 *Deployment guide verified for Docker, Docker Compose, and Kubernetes*
+
+# Operating Mode Configuration
+
+### MODE_A — Normal Operation (Large LLM)
+- `MODEL_PROVIDER=openai` or `anthropic` (configured API key required)
+- `PRIMARY_LLM_MODEL=gpt-4o-mini` or equivalent
+- `PRIMARY_LLM_API_KEY` in environment (never in source code)
+- `RETRY_BUDGET=3` (max retries before fallback)
+- `FALLBACK_TIMEOUT_SECONDS=30` (per-request timeout)
+
+### MODE_B — Fallback Operation (Large LLM Unavailable)
+- `MODEL_PROVIDER=mock` (deterministic mock responses)
+- `PRIMARY_LLM_MODEL` not required
+- No API key needed
+- `RETRY_BUDGET=0` (no retries; immediate fallback)
+- `FALLBACK_TIMEOUT_SECONDS=0` (no timeout needed)
+
+#### Mode Switching
+- System automatically switches from Mode A to Mode B when:
+  - LLM API returns non-2xx status after all retries
+  - API timeout exceeded per-request
+  - Rate limit exceeded and budget exhausted
+- System recovers to Mode A when:
+  - API returns 2xx status on retry
+  - Configuration changed to re-enable provider
+- Manual override via `JUSTICE_AI_MODE=fallback` env var (Sprint 2)
+

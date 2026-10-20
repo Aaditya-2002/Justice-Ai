@@ -7,7 +7,95 @@
 - String quotes: **double** (`"`)
 - Trailing commas: **always** in multiline
 
+### Imports (isort)# CODING-STANDARDS.md — Coding Standards
+## Operating Mode Awareness
+
+### Mode-Aware Development
+
+When implementing features, coding agents must distinguish between the two operating modes:
+
+1. **Mode A (Normal)**: Large LLM API configured. Code paths may include:
+   - `model_provider.generate_response()` calls
+   - External API request patterns
+   - Retry and fallback logic
+   - Citation and source validation workflows
+
+2. **Mode B (Fallback)**: Large LLM unavailable. Code paths must:
+   - Not depend on model provider responses
+   - Use deterministic logic or mock providers
+   - Clearly state when evidence is insufficient
+   - Avoid fabricating citations or sources
+
+3. **Switching Between Modes**:
+   - Configuration-driven: `MODEL_PROVIDER` env var
+   - Test-driven: Mock provider in unit tests
+   - Runtime: Automatic fallback on API failure
+   - Never assume Mode A in Mode B code paths
+
+### Checklist Before Commit
+
+- [ ] Mode A code paths do not break Mode B fallback
+- [ ] No hardcoded assumptions about LLM availability
+- [ ] Fallback responses explicitly state unavailability
+- [ ] Citation validation works in both modes
+- [ ] Tenant isolation enforced regardless of mode
+
+
+## Python Style
+
+### Formatting (Black)
+- Line length: **100 chars**
+- String quotes: **double** (`"`)
+- Trailing commas: **always** in multiline
+
 ### Imports (isort)
+```python
+# Standard library
+import json
+import os
+from typing import List, Optional
+
+# Third-party
+from fastapi import Depends, FastAPI
+from sqlalchemy.orm import Session
+
+# Local
+from app.core.config import settings
+from app.models.user import User
+```
+
+## Operating Mode Awareness
+
+### Mode-Aware Development
+
+When implementing features, coding agents must distinguish between the two operating modes:
+
+1. **Mode A (Normal)**: Large LLM API configured. Code paths may include:
+   - `model_provider.generate_response()` calls
+   - External API request patterns
+   - Retry and fallback logic
+   - Citation and source validation workflows
+
+2. **Mode B (Fallback)**: Large LLM unavailable. Code paths must:
+   - Not depend on model provider responses
+   - Use deterministic logic or mock providers
+   - Clearly state when evidence is insufficient
+   - Avoid fabricating citations or sources
+
+3. **Switching Between Modes**:
+   - Configuration-driven: `MODEL_PROVIDER` env var
+   - Test-driven: Mock provider in unit tests
+   - Runtime: Automatic fallback on API failure
+   - Never assume Mode A in Mode B code paths
+
+### Checklist Before Commit
+
+- [ ] Mode A code paths do not break Mode B fallback
+- [ ] No hardcoded assumptions about LLM availability
+- [ ] Fallback responses explicitly state unavailability
+- [ ] Citation validation works in both modes
+- [ ] Tenant isolation enforced regardless of mode
+
 ```python
 # Standard library
 import json

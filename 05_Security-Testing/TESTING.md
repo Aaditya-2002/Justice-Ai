@@ -12,6 +12,40 @@
 
 ---
 
+## Operating Mode Tests (Sprint 2)
+
+### Normal Mode (Mode A) Tests
+- [ ] `test_normal_mode_with_mock_llm` — Verify full graph execution with mock model provider
+- [ ] `test_normal_mode_checkpointing` — Verify PostgresSaver checkpoint save/retrieve works synchronously
+- [ ] `test_normal_mode_tenant_isolation` — Verify tenant_id scoping in all queries
+- [ ] `test_normal_mode_citation_validation` — Verify citations match retrieved sources
+- [ ] `test_normal_mode_skill_authorization` — Verify skill permission enforcement
+- [ ] `test_normal_mode_rang_retrieval` — Verify RAG pipeline with pgvector search
+- [ ] `test_normal_mode_error_handling` — Verify LangGraph exceptions trigger fallback
+
+### Fallback Mode (Mode B) Tests
+- [ ] `test_fallback_mode_without_llm` — Verify response generation when LLM unavailable
+- [ ] `test_fallback_evidence_based_response` — Verify evidence-based response without LLM
+- [ ] `test_fallback_no_fabrication` — Verify no fabricated citations or sources
+- [ ] `test_fallback_insufficient_evidence` — Verify "insufficient evidence" response
+- [ ] `test_fallback_tenant_isolation` — Verify tenant isolation still applies in fallback
+- [ ] `test_fallback_authentication` — Verify authentication persists in fallback mode
+
+### API Failure and Provider Fallback Tests
+- [ ] `test_provider_timeout_handling` — Verify graceful handling of LLM API timeouts
+- [ ] `test_provider_rate_limit_handling` — Verify rate limit retries are bounded
+- [ ] `test_fallback_activation_threshold` — Verify fallback activates after max retries
+- [ ] `test_recovery_from_fallback` — Verify system returns to normal mode after provider recovers
+
+### Graph Execution Tests
+- [ ] `test_graph_synchronous_execution` — Verify graph runs without ainvoke/async issues
+- [ ] `test_graph_checkpoint_save` — Verify checkpoint is saved via PostgresSaver
+- [ ] `test_graph_checkpoint_restore` — Verify checkpoint can be restored
+- [ ] `test_graph_node_transitions` — Verify all 8 node transitions work correctly
+
+---
+
+
 ## Test Categories
 
 ### Unit Tests (12)
@@ -195,6 +229,39 @@ def cleanup_test_data(db, user_id):
     db.query(User).filter(User.id == user_id).delete()
     db.commit()
 ```
+
+---
+
+## Operating Mode Tests (Sprint 2)
+
+### Normal Mode (Mode A) Tests
+- [ ] `test_normal_mode_with_mock_llm` — Verify full graph execution with mock model provider
+- [ ] `test_normal_mode_checkpointing` — Verify PostgresSaver checkpoint save/retrieve works synchronously
+- [ ] `test_normal_mode_tenant_isolation` — Verify tenant_id scoping in all queries
+- [ ] `test_normal_mode_citation_validation` — Verify citations match retrieved sources
+- [ ] `test_normal_mode_skill_authorization` — Verify skill permission enforcement
+- [ ] `test_normal_mode_rang_retrieval` — Verify RAG pipeline with pgvector search
+- [ ] `test_normal_mode_error_handling` — Verify LangGraph exceptions trigger fallback
+
+### Fallback Mode (Mode B) Tests
+- [ ] `test_fallback_mode_without_llm` — Verify response generation when LLM unavailable
+- [ ] `test_fallback_evidence_based_response` — Verify evidence-based response without LLM
+- [ ] `test_fallback_no_fabrication` — Verify no fabricated citations or sources
+- [ ] `test_fallback_insufficient_evidence` — Verify "insufficient evidence" response
+- [ ] `test_fallback_tenant_isolation` — Verify tenant isolation still applies in fallback
+- [ ] `test_fallback_authentication` — Verify authentication persists in fallback mode
+
+### API Failure and Provider Fallback Tests
+- [ ] `test_provider_timeout_handling` — Verify graceful handling of LLM API timeouts
+- [ ] `test_provider_rate_limit_handling` — Verify rate limit retries are bounded
+- [ ] `test_fallback_activation_threshold` — Verify fallback activates after max retries
+- [ ] `test_recovery_from_fallback` — Verify system returns to normal mode after provider recovers
+
+### Graph Execution Tests
+- [ ] `test_graph_synchronous_execution` — Verify graph runs without ainvoke/async issues
+- [ ] `test_graph_checkpoint_save` — Verify checkpoint is saved via PostgresSaver
+- [ ] `test_graph_checkpoint_restore` — Verify checkpoint can be restored
+- [ ] `test_graph_node_transitions` — Verify all 8 node transitions work correctly
 
 ---
 
