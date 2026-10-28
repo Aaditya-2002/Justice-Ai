@@ -10,7 +10,7 @@
 |--------|--------|------------|-------|
 | Sprint 1: Foundation & Auth | ✅ **Complete** | 100% | All infrastructure, auth, tenant isolation, RAG basics |
 | Sprint 2: LangGraph Orchestration | 📋 **Planned** | 0% | Awaiting Sprint 1 verification |
-| Sprint 2: Provider-Agnostic LLM Integration | ✅ **Complete** | 100% | NVIDIA Build API + Gemini adapters, deterministic failover (cooldowns, deadlines, retries, secret redaction); **144/144 offline tests passing (exit 0)**; `nvidia_build` **VERIFIED LIVE** (2026-10-28), Gemini live **BLOCKED** (no `GEMINI_API_KEY`) |
+| Sprint 2: Provider-Agnostic LLM Integration | ✅ **Complete** | 100% | NVIDIA Build API + Gemini adapters, deterministic failover (cooldowns, deadlines, retries, secret redaction); **152/152 offline tests passing (exit 0)**; `nvidia_build` **VERIFIED LIVE** (2026-10-28), Gemini live **BLOCKED** (no `GEMINI_API_KEY`) |
 
 ---
 
@@ -29,7 +29,7 @@
   recovery, deadline, permanent-error short-circuit, secret hygiene) plus one
   scripted-failing-primary + real-NVIDIA-fallback run — that is NOT a
   two-real-provider live test.
-- All 144 automated tests run offline (no network, no keys).
+- All 152 automated tests run offline (no network, no keys).
 - RAG uses REAL sentence-transformers embeddings (all-MiniLM-L6-v2, 384-dim);
   MockEmbeddingProvider is only a fallback if model loading fails (verified 2026-10-28)
 - Checkpointing NOT implemented (graph.compile() without checkpointer — single-turn execution only)

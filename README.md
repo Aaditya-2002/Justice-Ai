@@ -57,7 +57,7 @@ app/
     │                       NVIDIABuildModelProvider + GeminiModelProvider +
     │                       FailoverModelProvider + ModelProviderFactory
     └── embedding_provider.py  sentence-transformers with mock fallback
-tests/                      144 offline tests (pytest)
+tests/                      152 offline tests (pytest)
 alembic/                    database migrations
 frontend/                   legacy static pages (not maintained)
 docs/…, 01–07_*/            project documentation
@@ -188,8 +188,8 @@ API surface (JWT `Authorization: Bearer <token>` required):
 .\.venv\Scripts\python.exe -m pytest tests/ -q --tb=short
 ```
 
-- **144 tests, all offline** (fixtures/fakes; no network, no API keys).
-  Latest runs: `144 passed` in ~2:40, exit code 0.
+- **152 tests, all offline** (fixtures/fakes; no network, no API keys).
+  Latest runs: `152 passed` in ~2:35, exit code 0.
 - Live provider tests are **not automated**; after configuring keys, smoke
   test with minimal prompts and never send confidential legal or personal
   data to remote APIs.
