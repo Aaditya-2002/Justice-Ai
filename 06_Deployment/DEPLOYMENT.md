@@ -44,9 +44,20 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 # Application
-MODEL_PROVIDER=openai  # or anthropic, mock
-MODEL_NAME=gpt-4o-mini
-MODEL_API_KEY=sk-...
+# Implemented providers: mock, nvidia_build, google (openai/anthropic are NOT implemented)
+MODEL_PROVIDER=mock
+# Example NVIDIA Build API configuration:
+#   MODEL_PROVIDER=nvidia_build
+#   NVIDIA_API_KEY=nvapi-paste-your-key  (key prefix nvapi- is enforced)
+#   NVIDIA_MODEL_NAME=meta/llama-3.3-70b-instruct  (verify current id at build.nvidia.com)
+# Example Google Gemini configuration:
+#   MODEL_PROVIDER=google
+#   GEMINI_API_KEY=paste-your-key
+#   GEMINI_MODEL_NAME=gemini-3.8-flash
+# Automatic failover:
+#   MODEL_PROVIDER_ORDER=nvidia_build,google
+#   MODEL_COOLDOWN_SECONDS=60
+#   MODEL_REQUEST_DEADLINE_SECONDS=60
 
 # Embeddings
 EMBEDDING_PROVIDER=sentence-transformers
@@ -68,19 +79,20 @@ DEFAULT_TENANT_ID=default
 
 # Operating Mode Configuration
 
-### MODE_A — Normal Operation (Large LLM)
-- `MODEL_PROVIDER=openai` or `anthropic` (configured API key required)
-- `PRIMARY_LLM_MODEL=gpt-4o-mini` or equivalent
-- `PRIMARY_LLM_API_KEY` in environment (never in source code)
-- `RETRY_BUDGET=3` (max retries before fallback)
-- `FALLBACK_TIMEOUT_SECONDS=30` (per-request timeout)
+### MODE_A — Normal Operation (External LLM)
+- `MODEL_PROVIDER=nvidia_build` or `google` (configured API key required)
+- `NVIDIA_API_KEY` (nvapi-...) or `GEMINI_API_KEY` in environment (never in source code)
+- `MODEL_MAX_RETRIES=3` (bounded retries before the next provider in the chain)
+- `MODEL_TIMEOUT_SECONDS=30` (per-request timeout)
+- Optional failover chain: `MODEL_PROVIDER_ORDER=nvidia_build,google` with
+  `MODEL_COOLDOWN_SECONDS` and `MODEL_REQUEST_DEADLINE_SECONDS`
 
-### MODE_B — Fallback Operation (Large LLM Unavailable)
-- `MODEL_PROVIDER=mock` (deterministic mock responses)
-- `PRIMARY_LLM_MODEL` not required
+### MODE_B — Fallback Operation (External LLM Unavailable)
+- `MODEL_PROVIDER=mock` (deterministic mock responses, explicit disclosure — never silent)
 - No API key needed
-- `RETRY_BUDGET=0` (no retries; immediate fallback)
-- `FALLBACK_TIMEOUT_SECONDS=0` (no timeout needed)
+- Alternatively, with a chain configured, exhausted providers raise
+  `ProviderUnavailableError` after cooldowns; the system does NOT silently
+  degrade to mock output when real providers were configured.
 
 #### Mode Switching
 - System automatically switches from Mode A to Mode B when:
@@ -117,7 +129,7 @@ docker build -t justice-ai:v1.0.0 .
 
 ### Run (Single Container)
 ```
-docker run -d   --name justice-ai   --restart unless-stopped   -p 8000:8000   -e DATABASE_URL=postgresql://user:pass@host:5432/justice_ai   -e SECRET_KEY=your-secret   -e MODEL_PROVIDER=openai   -e MODEL_API_KEY=sk-...   -v justice-ai-uploads:/app/uploads   justice-ai:latest
+docker run -d   --name justice-ai   --restart unless-stopped   -p 8000:8000   -e DATABASE_URL=postgresql://user:pass@host:5432/justice_ai   -e SECRET_KEY=your-secret   -e MODEL_PROVIDER=nvidia_build   -e NVIDIA_API_KEY=nvapi-paste-your-key   -v justice-ai-uploads:/app/uploads   justice-ai:latest
 ```
 
 ### Docker Compose (Local Stack)
@@ -189,7 +201,7 @@ metadata:
   name: justice-ai-config
   namespace: justice-ai
 data:
-  MODEL_PROVIDER: "openai"
+  MODEL_PROVIDER: "nvidia_build"
   EMBEDDING_PROVIDER: "sentence-transformers"
   RAG_TOP_K: "5"
   CHUNK_SIZE: "1000"
@@ -208,7 +220,7 @@ type: Opaque
 stringData:
   DATABASE_URL: "postgresql://user:pass@postgres:5432/justice_ai"
   SECRET_KEY: "your-256-bit-secret"
-  MODEL_API_KEY: "sk-..."
+  NVIDIA_API_KEY: "nvapi-paste-your-key"   # or GEMINI_API_KEY
 ```
 
 ### Deployment
@@ -499,19 +511,20 @@ psql -h $DB_HOST -U $DB_USER -d justice_ai < backup_latest.sql
 
 # Operating Mode Configuration
 
-### MODE_A — Normal Operation (Large LLM)
-- `MODEL_PROVIDER=openai` or `anthropic` (configured API key required)
-- `PRIMARY_LLM_MODEL=gpt-4o-mini` or equivalent
-- `PRIMARY_LLM_API_KEY` in environment (never in source code)
-- `RETRY_BUDGET=3` (max retries before fallback)
-- `FALLBACK_TIMEOUT_SECONDS=30` (per-request timeout)
+### MODE_A — Normal Operation (External LLM)
+- `MODEL_PROVIDER=nvidia_build` or `google` (configured API key required)
+- `NVIDIA_API_KEY` (nvapi-...) or `GEMINI_API_KEY` in environment (never in source code)
+- `MODEL_MAX_RETRIES=3` (bounded retries before the next provider in the chain)
+- `MODEL_TIMEOUT_SECONDS=30` (per-request timeout)
+- Optional failover chain: `MODEL_PROVIDER_ORDER=nvidia_build,google` with
+  `MODEL_COOLDOWN_SECONDS` and `MODEL_REQUEST_DEADLINE_SECONDS`
 
-### MODE_B — Fallback Operation (Large LLM Unavailable)
-- `MODEL_PROVIDER=mock` (deterministic mock responses)
-- `PRIMARY_LLM_MODEL` not required
+### MODE_B — Fallback Operation (External LLM Unavailable)
+- `MODEL_PROVIDER=mock` (deterministic mock responses, explicit disclosure — never silent)
 - No API key needed
-- `RETRY_BUDGET=0` (no retries; immediate fallback)
-- `FALLBACK_TIMEOUT_SECONDS=0` (no timeout needed)
+- Alternatively, with a chain configured, exhausted providers raise
+  `ProviderUnavailableError` after cooldowns; the system does NOT silently
+  degrade to mock output when real providers were configured.
 
 #### Mode Switching
 - System automatically switches from Mode A to Mode B when:

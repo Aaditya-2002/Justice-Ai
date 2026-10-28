@@ -77,7 +77,9 @@ logs/
 *.db
 
 # Env
-.env.example
+# (.env.example is intentionally NOT ignored — it contains only placeholders)
+.env
+.env.local
 
 # Kafka
 *.ksql
@@ -115,3 +117,19 @@ docker-compose.override.yml
 /*.Z
 /*.7z
 /*.rar
+
+# Secrets / tokens
+token.txt
+*.token
+*.jwt
+
+# Ad-hoc edit backups (kept out of the repo; local copies remain)
+*.bak
+*.backup
+*.backup2
+*.nopatch
+*.orig
+*.old
+
+# Runtime upload fixtures
+uploads/

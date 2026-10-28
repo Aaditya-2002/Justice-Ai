@@ -171,7 +171,7 @@ curl -X POST http://localhost:8000/api/auth/login \
 # Response: {"access_token": "...", "token_type": "bearer", "tenant_id": "..."}
 
 # Use token
-TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+TOKEN="<access_token>"
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/conversations
 
 # Upload document

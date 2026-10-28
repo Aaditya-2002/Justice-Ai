@@ -21,7 +21,7 @@ username=testuser&password=testpass
 **Response 200**:
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "<ACCESS_TOKEN>",
   "token_type": "bearer",
   "tenant_id": "712dd85e-398d-4890-a030-07f811bc159f"
 }

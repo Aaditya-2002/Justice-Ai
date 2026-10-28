@@ -707,6 +707,161 @@ If a code or dependency change appears necessary, identify the blocker and
 proposed minimal change rather than silently expanding the scope.
 
 ==================================================
+13. LIGHTWEIGHT MODEL LAYER INTEGRATION (PROPOSED — SPRINT 2)
+==================================================
+
+## Current Status
+
+No lightweight generation model is currently loaded. Only `sentence-transformers` (all-MiniLM-L6-v2, 384-dim) is used for embeddings. `MODEL_PROVIDER=mock` for generation.
+
+## Proposed Architecture
+
+A single lightweight quantized model (target: Qwen2.5-0.5B-Instruct Q4_K_M GGUF, ~280–386 MB, Apache 2.0) handles:
+- Intent classification
+- Structured JSON extraction
+- Tool planning
+- Answer criticism assistance
+- Prompt-injection detection assistance
+
+Deterministic code handles:
+- Urgency classification (keyword rules)
+- Citation validation (chunk ID matching)
+- Authorization and permission enforcement
+- Output safety gating
+
+## Inference Runtime (Not Selected)
+
+Candidates: llama.cpp, Ollama, SGLang. llama.cpp recommended for Windows compatibility and GGUF-native support. Not installed or tested.
+
+## Model Selection Status
+
+**PROPOSED** (not finalized): Qwen2.5-0.5B-Instruct Q4_K_M GGUF
+**BACKUP**: SmolLM2-360M-Instruct Q4_K_M GGUF
+**Decision pending**: Benchmarking required per [[Model-Evaluation-Plan.md|Model Evaluation Plan]]
+
+## Evidence Status
+
+Lightweight model integration: PLANNED (research documented in Obsidian, not implemented)
+
+==================================================
+14. EXTERNAL LLM API INTEGRATION (PROPOSED — SPRINT 2)
+==================================================
+
+## Current Status
+
+`MODEL_PROVIDER=mock`. No external LLM API configured. `MockModelProvider` returns hardcoded responses. NVIDIA Build API is available to the project owner but NOT integrated.
+
+## Proposed Primary Provider
+
+**NVIDIA Build API** (build.nvidia.com) — OpenAI-compatible endpoint. Research documented in Obsidian. Pricing, rate limits (~40 RPM free tier), and model catalog partially verified from secondary sources. Direct official documentation not yet extracted.
+
+**Alternatives**: OpenAI (gpt-4o-mini), Google Gemini (3.8 Flash). Both have OpenAI/SDK packages already installed (`openai 3.35.1`, `langchain-openai 1.7.2`).
+
+## Integration Approach
+
+Add `NVIDIABuildModelProvider` (or `OpenAIModelProvider`) implementing the existing `ModelProvider` ABC in `app/core/model_provider.py`. Register in `ModelProviderFactory.create_provider()`.
+
+## Required Environment Variables (Not Configured)
+
+| Variable | Purpose | Status |
+|----------|---------|--------|
+| `NVIDIA_BUILD_API_KEY` | NVIDIA Build API authentication | NOT SET |
+| `MODEL_PROVIDER` | Provider selection (`mock` → `nvidia_build` or `openai`) | SET to `mock` |
+| `MODEL_NAME` | Model identifier | SET to `mock-model` |
+
+## Evidence Status
+
+External LLM API integration: PLANNED (research documented, not implemented, no API calls made)
+
+==================================================
+15. MULTI-AGENT ARCHITECTURE AND ORCHESTRATION (PROPOSED)
+==================================================
+
+## Current State
+
+LangGraph orchestration exists in `app/orchestration/`:
+- `state.py` — `JusticeAgentState` with `messages: Annotated[List[BaseMessage], add_messages]`
+- `graph.py` — `create_graph()` compiles WITHOUT checkpointer (single-turn only)
+- `nodes.py` — 8 async node functions
+- `chat_service.py` — Calls `await run_graph()` with legacy fallback
+
+## Checkpointing Gap
+
+Graph compiled with `graph.compile()` (no checkpointer). Checkpoint persistence and conversation resumption are NOT implemented. `thread_id` and `checkpoint_ns` in `run_config` have no effect.
+
+Alembic migration `0adbbf864339` creates PostgresSaver checkpoint tables for future use.
+
+## Proposed Multi-Agent Roles
+
+**Agent 1 — Intent and Query Classifier** (lightweight model)
+**Agent 2 — Tool and Retrieval Planner** (lightweight model, same instance)
+**Agent 3 — Answer Critic** (lightweight model or deterministic)
+**Primary LLM** — NVIDIA Build API (proposed) for primary reasoning
+
+**Constraint**: Lightweight models must NOT silently replace the external LLM as the normal reasoning engine.
+
+## Evidence Status
+
+Multi-agent architecture: PLANNED (research documented in Obsidian, not implemented)
+
+==================================================
+16. CACHING AND CONCURRENCY (PROPOSED)
+==================================================
+
+## Current Status
+
+Redis 7.x server running (session cache, rate limiting planned). No rate limiting middleware enforced. No response caching implemented.
+
+## Proposed Cache Design
+
+- **Do not** cache sensitive responses by raw question text alone
+- **Include** tenant_id, authorization scope, model version, retrieval version in cache keys
+- **Do not** share cached confidential evidence across tenants
+- **Embedding cache**: Cache document chunk embeddings (computed once at upload)
+- **Retrieval result cache**: Cache chunk references (not full text) with TTL
+- **Exact-response cache**: NOT recommended by default for legal responses
+
+## Concurrency Targets (Planning Only — Not Benchmarked)
+
+| Scenario | Users | Concurrent Requests |
+|----------|-------|--------------------|
+| A | 100 | 5 |
+| B | 500 | 25 |
+| C | 500 | 50 |
+| D | 500 | 100 (burst) |
+
+## Evidence Status
+
+Caching and concurrency: PLANNED (designed, not implemented, not benchmarked)
+
+==================================================
+17. TESTING REQUIREMENTS (PROPOSED)
+==================================================
+
+## Required Tests Before Production Use
+
+1. `test_lightweight_model_classification` — Intent classification accuracy
+2. `test_lightweight_model_json_extraction` — Structured output validity
+3. `test_lightweight_model_tool_selection` — Tool selection accuracy
+4. `test_lightweight_model_citation_criticism` — Answer criticism validity
+5. `test_lightweight_model_prompt_injection` — Prompt injection resistance
+6. `test_nvidia_build_api_timeout` — Bounded retry on API timeout
+7. `test_nvidia_build_api_rate_limit` — 429 handling with backoff
+8. `test_fallback_disclosure` — User notified when LLM unavailable
+9. `test_no_fabricated_citations` — No citations without matching chunks
+10. `test_max_revision_attempts` — Bounded revision (max 2)
+11. `test_tenant_isolation_with_llm` — Tenant scoping in LLM responses
+12. `test_concurrent_lightweight_inference` — Concurrent model calls
+
+## Benchmark Plan
+
+Documented in [[Model-Evaluation-Plan.md|Model Evaluation Plan]] (Obsidian). Not yet executed.
+
+## Evidence Status
+
+Testing requirements: PLANNED (test cases designed, not implemented)
+
+==================================================
 12. FINAL REPORT
 ==================================================
 

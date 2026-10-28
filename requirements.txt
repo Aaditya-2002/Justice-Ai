@@ -17,3 +17,6 @@ psycopg[binary]==3.3.6
 pgvector==0.5.1
 pytest==9.1.1
 pytest-asyncio==1.4.0
+openai==3.35.1
+langchain-openai==1.7.2
+langgraph==1.2.18

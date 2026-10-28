@@ -23,11 +23,8 @@ class ChatService:
         self.rag_service = RAGService(self.db)
         self.conversation_service = ConversationService(self.db)
         self.document_service = DocumentService(self.db)
-        # Initialize the model provider
-        self.model_provider = ModelProviderFactory.create_provider(
-            settings.MODEL_PROVIDER,
-            # We can pass additional kwargs if needed, like API keys, etc.
-        )
+        # Initialize the model provider (supports automatic failover chain)
+        self.model_provider = ModelProviderFactory.create_default_provider()
 
     async def generate_response(
         self, conversation_id: str, user_message: str, user_id: str, tenant_id: str

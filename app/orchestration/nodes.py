@@ -69,7 +69,8 @@ async def router_node(state: JusticeAgentState) -> JusticeAgentState:
         return state
     
     # Use model provider for classification
-    model_provider = ModelProviderFactory.create_provider(settings.MODEL_PROVIDER)
+    # (classification itself is currently heuristic; provider selected for parity)
+    model_provider = ModelProviderFactory.create_default_provider()
     
     # For now, use a simple heuristic-based classification
     # In production, this would use the model provider
@@ -147,8 +148,8 @@ async def information_node(state: JusticeAgentState) -> JusticeAgentState:
     state.citations = citations
     state.context_text = "\n\n".join(context_parts) if context_parts else "No relevant context found."
     
-    # Generate response using model provider
-    model_provider = ModelProviderFactory.create_provider(settings.MODEL_PROVIDER)
+    # Generate response using model provider (with automatic failover)
+    model_provider = ModelProviderFactory.create_default_provider()
     
     # Get conversation history
     from app.core.database import get_db

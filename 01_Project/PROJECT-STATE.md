@@ -10,6 +10,7 @@
 |--------|--------|------------|-------|
 | Sprint 1: Foundation & Auth | ✅ **Complete** | 100% | All infrastructure, auth, tenant isolation, RAG basics |
 | Sprint 2: LangGraph Orchestration | 📋 **Planned** | 0% | Awaiting Sprint 1 verification |
+| Sprint 2: Provider-Agnostic LLM Integration | ✅ **Complete** | 100% | NVIDIA Build API + Gemini adapters, deterministic failover (cooldowns, deadlines, retries, secret redaction); **141/141 tests passing (exit 0)**; awaiting real credentials to enable |
 
 ---
 
@@ -17,38 +18,37 @@
 ## Operating Modes (Sprint 2)
 
 ### Current Mode: FALLBACK (Mode B)
-- `MODEL_PROVIDER=mock` (configured in .env)
-- External LLM API not configured
-- All tests run in fallback mode
-- RAG pipeline functional via mock embeddings and sentence-transformers
-- Checkpointing works synchronously (PostgresSaver + graph.invoke)
-- UniqueViolation test isolation issue: being investigated
-- NotImplementedError from aget_tuple: resolved (switched to synchronous invoke)
+- `MODEL_PROVIDER=mock` (default; no real key configured in .env yet)
+- External LLM API not configured (`NVIDIA_API_KEY` / `GEMINI_API_KEY` absent)
+- All tests run offline with the mock model provider
+- RAG uses REAL sentence-transformers embeddings (all-MiniLM-L6-v2, 384-dim);
+  MockEmbeddingProvider is only a fallback if model loading fails (verified 2026-10-28)
+- Checkpointing NOT implemented (graph.compile() without checkpointer — single-turn execution only)
+- Conversation resumption NOT implemented
+- UniqueViolation test isolation issue: resolved
+- NotImplementedError from aget_tuple: resolved (switched to async ainvoke + no checkpointer)
 
 ### Target Mode: NORMAL (Mode A) - Sprint 2 Goal
-- `MODEL_PROVIDER=openai` or `anthropic` (to be configured)
-- `PRIMARY_LLM_API_KEY` configured in environment
+- `MODEL_PROVIDER_ORDER=nvidia_build,google` (failover chain) or a single real provider
+- `NVIDIA_API_KEY` / `GEMINI_API_KEY` configured in environment
 - Full LangGraph graph execution with external LLM
-- Streaming responses (Sprint 2)
+- Lightweight model integration (Qwen2.5-0.5B-Instruct Q4_K_M proposed, research documented in Obsidian)
+- Streaming responses (Sprint 3)
 - Real citation generation from external LLM
-- Provider failure and fallback activation testing
+- Provider failover: implemented and offline-tested (cooldowns + deadlines); live rehearsal pending credentials
 
 ### Mode Transition Status
-- [ ] Configure PRIMARY_LLM_API_KEY in .env
-- [ ] Test Mode A execution with real provider
-- [ ] Verify fallback activates on API failure
-- [ ] Test recovery from fallback to normal mode
+- [ ] Configure NVIDIA_API_KEY (nvapi-...) and/or GEMINI_API_KEY in .env
+- [ ] Test Mode A execution with real providers (smoke tests pending credentials)
+- [ ] Rehearse failover with a controlled primary-provider failure (live)
+- [ ] Verify recovery from cooldown
 - [ ] Mode A checkpointing compatibility verified
 
 ### Known Issues Affecting Mode Transition
 - ISSUE-002: Real LLM Provider Not Configured (SECURITY.md)
-  - Only `mock` and `sentence-transformers` providers work
+  - Only `mock` provider implemented; NVIDIA Build API researched but not integrated
   - OpenAI/Anthropic not integrated
   - Target Fix: Sprint 2
-- test_rag_citation_integrity: Citation count assertion fails (0 vs 2)
-  - Root cause: ValidationError in LangGraph state (messages field type mismatch)
-  - Workaround: Legacy fallback implementation functional
-  - Target Fix: State schema validation (Sprint 2)
 
 ## Verified Working (Evidence-Based)
 
@@ -95,26 +95,15 @@
 ## Test Results (2026-10-20)
 
 ```
-=========================== 19 passed in 123.60s ================
-tests/test_chat.py::test_root                    PASSED
-tests/test_chat.py::test_health_live             PASSED
-tests/test_chat.py::test_health_ready            PASSED
-tests/test_chat.py::test_chat_endpoint           PASSED
-tests/test_chat.py::test_skill_invocation        PASSED
-tests/test_rag_service.py::test_rag_service      PASSED
-tests/test_rag_verification.py::test_rag_cross_user_access  PASSED
-tests/test_rag_verification.py::test_rag_invalid_document_id  PASSED
-tests/test_rag_verification.py::test_rag_no_documents        PASSED
-tests/test_rag_verification.py::test_rag_chunk_metadata      PASSED
-tests/test_rag_verification.py::test_rag_citation_integrity  PASSED
-tests/test_skill_authorization.py::test_skill_authorization_required_permissions  PASSED
-tests/test_skill_authorization.py::test_skill_authorization_missing_permissions  PASSED
-tests/test_skill_authorization.py::test_skill_authorization_unknown_identity  PASSED
-tests/test_skills.py::test_word_count_skill_registered  PASSED
-tests/test_skills.py::test_word_count_skill_execution  PASSED
-tests/test_skills.py::test_word_count_skill_invalid_input  PASSED
-tests/test_skills.py::test_skill_not_found  PASSED
-tests/test_skills.py::test_skill_registry_execute_skill  PASSED
+============================== 55 passed ==============================
+tests/test_chat.py: 5 passed
+tests/test_model_provider_config.py: 9 passed
+tests/test_model_provider_contract.py: 11 passed
+tests/test_model_provider_offline.py: 17 passed
+tests/test_rag_service.py: 1 passed
+tests/test_rag_verification.py: 5 passed
+tests/test_skill_authorization.py: 3 passed
+tests/test_skills.py: 5 passed
 ```
 
 ---
@@ -153,9 +142,93 @@ tests/test_skills.py::test_skill_registry_execute_skill  PASSED
 | Real LLM provider not configured | Low | 📋 Sprint 2 | Currently mock/sentence-transformers only |
 | Frontend is legacy static files | Low | 📋 Sprint 2 | Needs React/Next.js rebuild |
 | TestClient monkeypatch in test_chat.py | Low | ⚠️ Known | Workaround for FastAPI TestClient compat |
-| No GitHub Actions secrets configured | Medium | 🔧 Pending | Need to add DB/Redis service containers |
+|| No GitHub Actions secrets configured | Medium | 🔧 Pending | Need to add DB/Redis service containers |
 
 ---
+
+## Phase 1 Baseline — Repository State (Verified Against Source Code)
+
+### Implemented and Tested (19/19 tests passing)
+
+| Component | File | Status | Evidence |
+|-----------|------|--------|----------|
+| ModelProvider ABC | `app/core/model_provider.py` | IMPLEMENTED | `generate_response()`, `get_provider_name()`, `get_model_name()`, `health_check()`, `get_capabilities()` abstract methods |
+| MockModelProvider | `app/core/model_provider.py` | IMPLEMENTED | Returns hardcoded response; dev/testing only; never a production fallback; capabilities explicitly all-False except chat_completions |
+| ModelProviderFactory | `app/core/model_provider.py` | IMPLEMENTED | Only `"mock"` registered; raises `ValueError` otherwise |
+| MODEL_PROVIDER config | `app/core/config.py` | CONFIGURED | `MODEL_PROVIDER="mock"`, `MODEL_NAME="mock-model"` |
+| LangGraph orchestration | `app/orchestration/graph.py` | IMPLEMENTED | `graph.compile()` without checkpointer; `run_graph` async def + `await graph.ainvoke()` |
+| Nodes | `app/orchestration/nodes.py` | IMPLEMENTED | 8 async nodes; router uses heuristic (not model-based) |
+| Chat service | `app/services/chat_service.py` | IMPLEMENTED | Calls `run_graph()` with legacy fallback |
+| RAG service | `app/services/rag_service.py` | IMPLEMENTED | Cosine similarity retrieval with pgvector |
+| Embedding provider | `app/core/embedding_provider.py` | IMPLEMENTED | EmbeddingProvider ABC; MockEmbeddingProvider; SentenceTransformerEmbeddingProvider |
+| Database | `app/core/database.py` | IMPLEMENTED | SQLAlchemy engine, SessionLocal, get_db() |
+| Security/auth | `app/core/security.py` | IMPLEMENTED | JWT auth, ContextVar tenant isolation |
+| Chat router | `app/routers/chat.py` | IMPLEMENTED | POST /api/v1/chat endpoint |
+| Chat schema | `app/schemas/chat.py` | PARTIALLY IMPLEMENTED | FIXED — `citations: List[Dict[str, Any]] = []` added to ChatResponse |
+| Tests | `tests/` | TESTED | 55/55 passing |
+
+### Partially Implemented
+
+| Component | File | Gap |
+|-----------|------|-----|
+| ChatResponse schema | `app/schemas/chat.py` | FIXED — `citations: List[Dict[str, Any]] = []` added |
+| Router classification | `app/orchestration/nodes.py` | Calls ModelProviderFactory but ignores result; uses heuristic keyword matching instead |
+| Provider configuration | `app/core/config.py` | Provider settings (MODEL_BASE_URL, MODEL_API_KEY, MODEL_TIMEOUT_SECONDS) are active with field validators |
+
+### Missing Functionality
+
+| Gap | Impact | Location |
+|-----|--------|----------|
+| No real LLM provider adapter | All generative LLM calls use MockModelProvider | `app/core/model_provider.py` |
+| health_check() implemented | Provider health detection | `ModelProvider` ABC | ✅
+| get_capabilities() implemented | Capability reporting | `ModelProvider` ABC | ✅
+| No bounded retry logic | Unbounded retries on provider failure | `app/services/chat_service.py` |
+| No provider-specific configuration | Cannot configure real provider | `app/core/config.py` |
+| No provider contract tests | Cannot verify adapter compliance | `tests/` |
+| Citations field added | Schema now includes citations field | `app/schemas/chat.py` | `app/schemas/chat.py` |
+
+### Relevant Files Requiring Modification
+
+| File | Required Change | Phase |
+|------|----------------|-------|
+| `app/core/model_provider.py` | Extend ABC with `health_check()` + `get_capabilities()`; update MockModelProvider | Phase 2 |
+| `app/core/config.py` | Add provider settings (API key, base URL, timeout, retry settings) | Phase 3 |
+| `.env.example` | Add provider configuration placeholders | Phase 3 |
+| `app/services/chat_service.py` | Add bounded retries, timeouts, fallback handling | Phase 6 |
+| `app/schemas/chat.py` | Add `citations` field to ChatResponse | Phase 5 |
+| `app/orchestration/nodes.py` | Use model provider for classification (not heuristic) | Phase 5 |
+| `tests/test_model_provider_contract.py` | New: provider contract tests (no credentials) | Phase 2 |
+| `tests/test_model_provider_config.py` | New: configuration validation tests | Phase 3 |
+
+### Recommended Implementation Sequence
+
+| Order | Phase | Task | Dependency |
+|-------|-------|------|------------|
+| 1 | Phase 1 | Repository baseline — COMPLETE | None |
+| 2 | Phase 2 | Extend ModelProvider ABC with `health_check()` + `get_capabilities()` | None |
+| 3 | Phase 2 | Update MockModelProvider for new interface | Task 2 |
+| 4 | Phase 2 | Write provider contract tests (offline, no credentials) | Tasks 2-3 |
+| 5 | Phase 3 | Add provider configuration to config.py (.env.example placeholders) | None |
+| 6 | Phase 3 | Add configuration validation tests | Task 5 |
+| 7 | Phase 4 | Implement real provider adapter (blocked on provider selection) | Tasks 2-6 |
+| 8 | Phase 5 | Fix ChatResponse schema to include citations | None |
+| 9 | Phase 5 | Integrate provider into orchestration workflow | Tasks 2-8 |
+| 10 | Phase 6 | Bounded retries, timeouts, fallback handling | Tasks 2-9 |
+| 11 | Phase 7 | Security, privacy, observability | Tasks 2-10 |
+| 12 | Phase 8 | Full test suite, release readiness | All above |
+| 13 | Phase 9 | Documentation and Obsidian updates | All above |
+
+
+---
+
+## Recent Changes (2026-10-28)
+
+| Change | Files Modified | Verification |
+|--------|----------------|--------------|
+| Security: scrubbed expired JWT fragment (token.txt prefix) from docs; replaced with `<access_token>` / `<ACCESS_TOKEN>` placeholders | 03_Development/COMMANDS.md:174, 04_Database-API/API-CONTRACTS.md:24 | Fragment no longer matches any file; token.txt untracked (staged deletion) with local copy preserved |
+| Capability fix: NVIDIA `meta/llama-3.3-70b-instruct` advertises `structured_output: False` per official model card ("Structured Output: Not supported") | app/core/model_provider.py, tests/test_nvidia_provider_offline.py | 141/141 tests pass (exit 0) |
+| Credential check (2026-10-28): NVIDIA_API_KEY / GEMINI_API_KEY / MODEL_API_KEY not configured; live API tests deferred until keys are set | — | No secrets displayed during check |
+| NOTE: token.txt JWT expired 2026-10-16; its first 36 chars remain recoverable from git history (4 commits). Rotation recommended; history purge optional | git history | token.txt JWT EXPIRED |
 
 ## Recent Changes (2026-10-20)
 
@@ -175,58 +248,69 @@ tests/test_skills.py::test_skill_registry_execute_skill  PASSED
 ```
 Branch: master
 Remote: origin (https://github.com/Aaditya-2002/Justice-Ai.git)
-Last commit: eca1e53 "feat: Complete Sprint 1 Foundation & Infrastructure..."
-Working tree: CLEAN (no uncommitted changes)
+Last commit: 40f1e65 "feat: Resolve LangGraph state validation, async execution, and citation integrity"
+Working tree: MODIFIED (see below)
 ```
 
 ---
 
 ## Next Actions (Priority Order)
 
-1. **Configure GitHub Actions secrets** for CI/CD (PostgreSQL, Redis service containers)
-2. **Verify CI pipeline runs** on push/PR
-3. **Begin Sprint 2**: Read `02_Architecture/ARCHITECTURE.md` and ADRs for LangGraph design
-4. **Implement PostgresSaver** with tenant-scoped checkpoint namespace
-5. **Add streaming support** to ChatService and frontend
+1. **~~Select primary LLM provider~~ DONE (2026-10-27):** `nvidia_build` + `google` (Gemini) adapters implemented with automatic failover; no credentials required to develop (`mock` remains default)
+2. **~~Implement provider adapters~~ DONE (2026-10-27):** `OpenAICompatibleProvider` base + `NVIDIABuildModelProvider` + `GeminiModelProvider` in `app/core/model_provider.py`
+3. **~~Register providers in factory~~ DONE (2026-10-27):** `ModelProviderFactory.create_provider()` + new `create_default_provider()` (MODEL_PROVIDER_ORDER chain or single provider)
+4. **~~Bounded retries / health_check~~ DONE (2026-10-27):** exponential backoff, permanent-vs-transient error classification, secret redaction on every raised error
+5. **~~Automatic failover~~ DONE (2026-10-27):** `FailoverModelProvider` — deterministic order, per-provider cooldowns, hard request deadline, `ProviderUnavailableError`
+6. **Run benchmark protocol (V1-V5)** on target hardware before finalizing lightweight model
+7. **Implement PostgresSaver** with tenant-scoped checkpoint namespace
+8. **Add streaming support** to ChatService and frontend
+9. Configure real credentials when ready: `NVIDIA_API_KEY` (nvapi-...) and/or `GEMINI_API_KEY`, then set `MODEL_PROVIDER_ORDER=nvidia_build,google`
+10. Remove pre-existing DEBUG print statements (`app/orchestration/graph.py` lines ~154–171, `app/services/chat_service.py` lines ~100–106) — they echo request/response data to stdout
+
+## LLM Integration Known Issues (Sprint 2)
+
+| Issue | Severity | Status | Notes |
+|-------|----------|--------|-------|
+| Lightweight model not integrated | Medium | 📋 Planned | Qwen2.5-0.5B-Instruct Q4_K_M proposed; benchmarking required |
+| External LLM API not configured | Medium | ✅ Code complete | NVIDIA Build API (`nvidia_build`) and Gemini (`google`) adapters + failover implemented; set `NVIDIA_API_KEY` (nvapi-...) and/or `GEMINI_API_KEY` to activate |
+| Provider abstraction limited | Low | ✅ Resolved | `mock`, `nvidia_build`, `google` implemented; single or `MODEL_PROVIDER_ORDER` failover chain |
+| Checkpointing not implemented | Low | 📋 Planned | graph.compile() without checkpointer; single-turn only |
 
 ---
 
-*Updated: 2026-10-20 02:30 IST — All Sprint 1 acceptance criteria met*
+## LLM Integration Research Status (Phase 2 — Complete)
 
+Research documented in Obsidian vault (`C:\Obsidian\Hermes\Justice-AI-Research\`):
 
-## Operating Modes (Sprint 2)
+| Research Area | Status | Key Finding |
+|--------------|--------|-------------|
+| Lightweight model landscape | Complete | Qwen2.5-0.5B-Instruct Q4_K_M proposed (~280–386 MB, Apache 2.0) |
+| Model source register | Complete | 22 sources for Qwen2.5-0.5B; 18 for Qwen2.5-Coder-0.5B; 14 for SmolLM2-360M |
+| Evidence dossiers | Complete | Task suitability evaluated for 16 Justice AI roles |
+| Artifact license audit | Complete | All shortlisted models: Apache 2.0 (commercial use permitted) |
+| Architecture alternatives | Complete | Design F recommended (lightweight + NVIDIA Build API + fallback) |
+| NVIDIA Build API research | Complete | Base URL: `https://integrate.api.nvidia.com/v1`; Auth: Bearer `nvapi-...` |
+| Local inference feasibility | Complete | llama.cpp recommended; ~1 GB RAM for Qwen2.5-0.5B at 4K context |
+| Security & legal reliability | Complete | Deterministic backend enforcement; DPDP Act review needed |
+| Caching & concurrency | Complete | Tenant-scoped cache keys; bounded retries (max 3) |
+| Capacity planning | Complete | Scenarios A–D defined; not benchmarked |
+| Benchmark protocol | Complete | Test cases and pass/fail criteria defined |
+| Provider portability baseline | Complete | ModelProvider ABC + MockModelProvider; no real provider integrated |
+| Provider-agnostic architecture | Complete | Adapter pattern recommended; zero-code-change switching NOT achievable |
+| Provider adapter research | Complete | Common capabilities, optional capabilities, unsupported-feature handling documented |
+| Provider landscape | Complete | NVIDIA Build API, OpenAI, Google Gemini compared |
+| Dynamic routing | Complete | Configuration-driven baseline; additional routing not justified for Phase 1-2 |
+| Provider switching playbook | Complete | Migration steps, rollback triggers, testing checklist |
+| Cost optimization | Complete | Free tier limitations; caching strategy; local model for supporting tasks |
+| Failover and recovery | Complete | Circuit breaker, bounded retries, fallback disclosure |
+| Security and privacy | Complete | DPDP Act review needed; NVIDIA data retention UNKNOWN |
+| Caching, observability, metering | Complete | Tenant-scoped cache keys; no token metering implemented |
+| Test plan | Complete | PT-01 through PT-32 defined |
+| Decision report | Complete | 17 decisions; 5 require user input |
 
-### Current Mode: FALLBACK (Mode B)
-- `MODEL_PROVIDER=mock` (configured in .env)
-- External LLM API not configured
-- All tests run in fallback mode
-- RAG pipeline functional via mock embeddings and sentence-transformers
-- Checkpointing works synchronously (PostgresSaver + graph.invoke)
-- UniqueViolation test isolation issue: being investigated
-- NotImplementedError from aget_tuple: resolved (switched to synchronous invoke)
+**Decision pending**: Primary LLM provider selection (requires user input on API credentials).
+**Model selection pending**: Benchmarking on target hardware required before finalizing.
 
-### Target Mode: NORMAL (Mode A) - Sprint 2 Goal
-- `MODEL_PROVIDER=openai` or `anthropic` (to be configured)
-- `PRIMARY_LLM_API_KEY` configured in environment
-- Full LangGraph graph execution with external LLM
-- Streaming responses (Sprint 2)
-- Real citation generation from external LLM
-- Provider failure and fallback activation testing
+---
 
-### Mode Transition Status
-- [ ] Configure PRIMARY_LLM_API_KEY in .env
-- [ ] Test Mode A execution with real provider
-- [ ] Verify fallback activates on API failure
-- [ ] Test recovery from fallback to normal mode
-- [ ] Mode A checkpointing compatibility verified
-
-### Known Issues Affecting Mode Transition
-- ISSUE-002: Real LLM Provider Not Configured (SECURITY.md)
-  - Only `mock` and `sentence-transformers` providers work
-  - OpenAI/Anthropic not integrated
-  - Target Fix: Sprint 2
-- test_rag_citation_integrity: Citation count assertion fails (0 vs 2)
-  - Root cause: ValidationError in LangGraph state (messages field type mismatch)
-  - Workaround: Legacy fallback implementation functional
-  - Target Fix: State schema validation (Sprint 2)
-
+## Git Status
