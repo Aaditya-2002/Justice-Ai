@@ -94,11 +94,15 @@ class TestConfigApiKeyRequirement:
         # import time, which would fail outside the pytest.raises block.
         from app.core.config import Settings
         os.environ["MODEL_PROVIDER"] = "nvidia_build"
+        os.environ["MODEL_BASE_URL"] = "https://integrate.api.nvidia.com/v1"
         os.environ.pop("MODEL_API_KEY", None)
+        # _env_file=None: a locally configured .env (e.g. with NVIDIA_API_KEY
+        # for live tests) must not leak into this "no key configured" test.
         with pytest.raises(ValidationError, match="API key is required"):
-            Settings()
+            Settings(_env_file=None)
         # Clean up
         os.environ.pop("MODEL_PROVIDER", None)
+        os.environ.pop("MODEL_BASE_URL", None)
         os.environ.pop("MODEL_API_KEY", None)
         os.environ.pop("SECRET_KEY", None)
         os.environ.pop("DATABASE_URL", None)

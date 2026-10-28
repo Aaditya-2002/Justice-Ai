@@ -49,7 +49,8 @@ MODEL_PROVIDER=mock
 # Example NVIDIA Build API configuration:
 #   MODEL_PROVIDER=nvidia_build
 #   NVIDIA_API_KEY=nvapi-paste-your-key  (key prefix nvapi- is enforced)
-#   NVIDIA_MODEL_NAME=meta/llama-3.3-70b-instruct  (verify current id at build.nvidia.com)
+#   NVIDIA_MODEL_NAME=nvidia/nemotron-3.5-lightning-30b-a3b  (default; verify current id at build.nvidia.com —
+#   the previous default meta/llama-3.3-70b-instruct reached EOL 2026-08-26 and returns HTTP 410)
 # Example Google Gemini configuration:
 #   MODEL_PROVIDER=google
 #   GEMINI_API_KEY=paste-your-key

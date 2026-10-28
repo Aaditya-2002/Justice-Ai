@@ -10,13 +10,19 @@
 - **Workaround**: None. Wait for Sprint 2 implementation.
 - **Target Fix**: Sprint 2 (LangGraph + streaming)
 
-### ISSUE-002: Real LLM Provider Not Configured
+### ISSUE-002: Real LLM Provider Configuration (partially resolved)
 - **Severity**: Low
 - **Component**: ModelProvider
-- **Description**: Only `mock` and `sentence-transformers` providers work. OpenAI/Anthropic not integrated.
-- **Impact**: Cannot test real model quality in CI/CD.
-- **Workaround**: Use `sentence-transformers` for dev; mock for tests.
-- **Target Fix**: Sprint 2 (add OpenAI/Anthropic providers)
+- **Description**: `nvidia_build` (NVIDIA Build API) and `google` (Gemini
+  OpenAI-compatibility endpoint) are implemented. NVIDIA is **VERIFIED LIVE**
+  (real request, 2026-10-28). Gemini live verification is **BLOCKED** — no
+  `GEMINI_API_KEY` is configured. OpenAI/Anthropic direct adapters are not
+  implemented.
+- **Impact**: CI cannot exercise a real provider without network and keys;
+  Gemini quality is unverified.
+- **Workaround**: Offline fakes for tests; `mock` for local development;
+  `nvidia_build` for real smoke tests.
+- **Target Fix**: Supply `GEMINI_API_KEY` and run the Gemini smoke test.
 
 ### ISSUE-003: Frontend is Legacy Static Files
 - **Severity**: Low

@@ -16,22 +16,35 @@ REQUIRED = {
 
 def _apply(env):
     for k, v in env.items():
-        os.environ[k] = v
+        if v is None:
+            # Explicit None means "not set": remove any ambient value.
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
 
 
 def _cleanup(env_keys):
     for k in env_keys:
-        os.environ.pop(k, None)
+        if k not in REQUIRED:
+            os.environ.pop(k, None)
 
 
 def _make_settings(**overrides):
-    env = {**REQUIRED, **overrides}
+    """Create a Settings instance in a controlled environment.
+
+    Overrides with None pop the variable so the test controls the state
+    regardless of ambient/.env values. String overrides are set in os.environ.
+    """
+    env = {**REQUIRED, **{k: v for k, v in overrides.items() if v is not None}}
+    for k, v in overrides.items():
+        if v is None:
+            os.environ.pop(k, None)
     _apply(env)
     from app.core.config import Settings
     try:
         return Settings()
     finally:
-        _cleanup(env.keys())
+        _cleanup(list(overrides.keys()) + list(REQUIRED.keys()))
 
 
 _BASE_ENV_KEYS = list(REQUIRED.keys()) + [
@@ -79,8 +92,10 @@ class TestProviderSpecificKeys:
         os.environ.pop("NVIDIA_API_KEY", None)
         try:
             from app.core.config import Settings
+            # _env_file=None: a locally configured .env (e.g. with keys for
+            # live tests) must not leak into this "nothing configured" test.
             with pytest.raises(ValidationError):
-                Settings()
+                Settings(_env_file=None)
         finally:
             _cleanup(["MODEL_PROVIDER", "MODEL_BASE_URL"])
 
@@ -88,7 +103,9 @@ class TestProviderSpecificKeys:
 class TestFailoverSettings:
 
     def test_provider_order_default_empty(self):
-        settings = _make_settings()
+        # Empty-string init override makes the default independent of a
+        # locally configured .env (e.g. when keys were added for live tests).
+        settings = _make_settings(MODEL_PROVIDER_ORDER="")
         assert settings.MODEL_PROVIDER_ORDER == ""
 
     def test_cooldown_default_60(self):
@@ -107,10 +124,19 @@ class TestFailoverSettings:
 
 
 class TestSecretHygiene:
-    """Secrets must live in env only; config never invents key material."""
+    """Config never invents key material: defaults are None unless the
+    environment (.env/env vars) provides them."""
 
-    def test_no_default_api_keys(self):
-        settings = _make_settings()
+    def test_no_builtin_default_api_keys(self):
+        # Explicit init-kwarg Nones pin the defaults regardless of a locally
+        # configured .env (init kwargs have the highest pydantic-settings priority).
+        from app.core.config import Settings
+        settings = Settings(
+            _env_file=None,
+            SECRET_KEY="test-secret-key-do-not-use-in-production",
+            DATABASE_URL="postgresql://postgres@127.0.0.1:5432/justice_ai",
+            NVIDIA_API_KEY=None, GEMINI_API_KEY=None, MODEL_API_KEY=None,
+        )
         assert settings.MODEL_API_KEY is None
         assert settings.NVIDIA_API_KEY is None
         assert settings.GEMINI_API_KEY is None

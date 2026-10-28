@@ -38,7 +38,7 @@ class TestNVIDIAProviderInitialization:
         """NVIDIA provider accepts valid nvapi- prefixed key."""
         provider = NVIDIABuildModelProvider(api_key="nvapi-test-key-123")
         assert provider.get_provider_name() == "nvidia_build"
-        assert provider.get_model_name() == "meta/llama-3.3-70b-instruct"
+        assert provider.get_model_name() == "nvidia/nemotron-3.5-lightning-30b-a3b"
 
     def test_init_accepts_custom_model_name(self):
         """NVIDIA provider accepts custom model name."""
@@ -72,7 +72,7 @@ class TestNVIDIAProviderInitialization:
         """get_provider_name and get_model_name return correct values."""
         provider = NVIDIABuildModelProvider(api_key="nvapi-test-key-123")
         assert provider.get_provider_name() == "nvidia_build"
-        assert provider.get_model_name() == "meta/llama-3.3-70b-instruct"
+        assert provider.get_model_name() == "nvidia/nemotron-3.5-lightning-30b-a3b"
 
     def test_default_base_url_is_nvidia_build_api(self):
         """Default base URL is the NVIDIA Build API endpoint."""
@@ -107,8 +107,8 @@ class TestNVIDIAProviderCapabilities:
 
         assert caps["chat_completions"] is True
         assert caps["streaming"] is True
-        # Per official meta/llama-3.3-70b-instruct model card:
-        # Function Calling supported, Structured Output NOT supported
+        # Conservative adapter flags: function calling supported on hosted
+        # NIMs; structured output is reported False until verified per model.
         assert caps["tool_calling"] is True
         assert caps["structured_output"] is False
         assert caps["embeddings"] is False
@@ -352,12 +352,12 @@ class TestNVIDIAProviderFactoryRegistration:
         """Factory creates NVIDIABuildModelProvider for 'nvidia_build'."""
         os.environ["NVIDIA_API_KEY"] = "nvapi-test-key-123"
         os.environ["NVIDIA_BASE_URL"] = "https://integrate.api.nvidia.com/v1"
-        os.environ["NVIDIA_MODEL_NAME"] = "meta/llama-3.3-70b-instruct"
+        os.environ["NVIDIA_MODEL_NAME"] = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
         provider = ModelProviderFactory.create_provider("nvidia_build")
         assert isinstance(provider, NVIDIABuildModelProvider)
         assert provider.get_provider_name() == "nvidia_build"
-        assert provider.get_model_name() == "meta/llama-3.3-70b-instruct"
+        assert provider.get_model_name() == "nvidia/nemotron-3.5-lightning-30b-a3b"
 
         os.environ.pop("NVIDIA_API_KEY", None)
         os.environ.pop("NVIDIA_BASE_URL", None)
@@ -367,7 +367,7 @@ class TestNVIDIAProviderFactoryRegistration:
         """Factory allows kwargs to override settings."""
         os.environ["NVIDIA_API_KEY"] = "nvapi-test-key-123"
         os.environ["NVIDIA_BASE_URL"] = "https://integrate.api.nvidia.com/v1"
-        os.environ["NVIDIA_MODEL_NAME"] = "meta/llama-3.3-70b-instruct"
+        os.environ["NVIDIA_MODEL_NAME"] = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
         provider = ModelProviderFactory.create_provider(
             "nvidia_build",

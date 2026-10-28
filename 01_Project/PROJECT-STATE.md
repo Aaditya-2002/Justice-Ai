@@ -10,17 +10,26 @@
 |--------|--------|------------|-------|
 | Sprint 1: Foundation & Auth | ✅ **Complete** | 100% | All infrastructure, auth, tenant isolation, RAG basics |
 | Sprint 2: LangGraph Orchestration | 📋 **Planned** | 0% | Awaiting Sprint 1 verification |
-| Sprint 2: Provider-Agnostic LLM Integration | ✅ **Complete** | 100% | NVIDIA Build API + Gemini adapters, deterministic failover (cooldowns, deadlines, retries, secret redaction); **141/141 tests passing (exit 0)**; awaiting real credentials to enable |
+| Sprint 2: Provider-Agnostic LLM Integration | ✅ **Complete** | 100% | NVIDIA Build API + Gemini adapters, deterministic failover (cooldowns, deadlines, retries, secret redaction); **144/144 offline tests passing (exit 0)**; `nvidia_build` **VERIFIED LIVE** (2026-10-28), Gemini live **BLOCKED** (no `GEMINI_API_KEY`) |
 
 ---
 
 
 ## Operating Modes (Sprint 2)
 
-### Current Mode: FALLBACK (Mode B)
-- `MODEL_PROVIDER=mock` (default; no real key configured in .env yet)
-- External LLM API not configured (`NVIDIA_API_KEY` / `GEMINI_API_KEY` absent)
-- All tests run offline with the mock model provider
+### Current Mode: HYBRID (Mode A partial)
+- `.env` sets `MODEL_PROVIDER_ORDER=nvidia_build,google`; `NVIDIA_API_KEY` is
+  configured locally (never committed). `create_default_provider()` therefore
+  returns a single `NVIDIABuildModelProvider` today and upgrades automatically
+  to a `FailoverModelProvider` once `GEMINI_API_KEY` is also present.
+- `nvidia_build` is **VERIFIED LIVE** (real `chat/completions`, 2026-10-28,
+  model `nvidia/nemotron-3.5-lightning-30b-a3b`). Gemini live request is
+  **BLOCKED** — no `GEMINI_API_KEY` available.
+- Failover is **TESTED OFFLINE** with deterministic fakes (failover, cooldown,
+  recovery, deadline, permanent-error short-circuit, secret hygiene) plus one
+  scripted-failing-primary + real-NVIDIA-fallback run — that is NOT a
+  two-real-provider live test.
+- All 144 automated tests run offline (no network, no keys).
 - RAG uses REAL sentence-transformers embeddings (all-MiniLM-L6-v2, 384-dim);
   MockEmbeddingProvider is only a fallback if model loading fails (verified 2026-10-28)
 - Checkpointing NOT implemented (graph.compile() without checkpointer — single-turn execution only)
@@ -220,6 +229,29 @@ tests/test_skills.py: 5 passed
 
 
 ---
+
+## Recent Changes (2026-10-28b — live verification)
+
+| Change | Files | Verification |
+|---|---|---|
+| LIVE: NVIDIA smoke test PASS — endpoint/auth verified, response `NVIDIA_OK`, isolated 3.87s / provider-path 7.74s | — | Against real `integrate.api.nvidia.com/v1` |
+| LIVE: Gemini BLOCKED — no GEMINI_API_KEY provided | — | — |
+| `meta/llama-3.3-70b-instruct` confirmed EOL (HTTP 410, EOL 2026-08-26). Default model changed to verified-live `nvidia/nemotron-3.5-lightning-30b-a3b` (from live /v1/models probe, 84 models listed) + tests updated | app/core/model_provider.py, tests/test_nvidia_provider_offline.py | Live generation succeeded |
+| Defect fixes: `redact()` now scrubs any credential-shaped literal (nvapi-/sk-/AIza/ghp_/AKIA) even without the known secret; `_safe_error()` falls back to plain Exception for SDK classes with keyword-only ctor args (was masking real APIStatusError); HTTP 410/"end of life" now classified permanent (no futile retries) | app/core/model_provider.py | 144/144 tests pass, exit 0 |
+| Failover semantics corrected: a SUCCESSFUL provider is no longer placed in cooldown (was: every success throttled the primary for MODEL_COOLDOWN_SECONDS, accidentally round-robining the chain); cooldown now = failure/deadline only. Tests updated to lock in first-healthy-wins + sticky primary | tests/test_failover_offline.py | Offline simulated failure → real-NVIDIA fallback served exact contract (prompt/history/RAG context preserved) |
+| Config test isolation: tests now shield from a locally configured .env via `_env_file=None` / explicit init kwargs | tests/test_config_failover_offline.py, tests/test_model_provider_config.py | 144 passed |
+| token.txt: prior commit did NOT include the staged deletion (still tracked in HEAD) — deletion re-staged, local copy preserved; committed in `2026-10-28c` | index | `D token.txt` staged |
+| .env updated with NVIDIA_API_KEY + MODEL_PROVIDER_ORDER=nvidia_build,google only; all other settings preserved; key never displayed | .env | loaded + leak-scanned: NONE in repo files |
+
+## Recent Changes (2026-10-28c — hardening commit & push)
+
+| Change | Files | Verification |
+|---|---|---|
+| Committed and pushed the provider hardening work (redaction, `_safe_error`, 410 permanence, success-cooldown removal, verified-live NVIDIA default model) | app/core/model_provider.py, tests/*, README.md, 06_Deployment/DEPLOYMENT.md, 07_Knowledge/KNOWN-ISSUES.md, 01_Project/PROJECT-STATE.md | 152/152 offline tests pass, exit 0 |
+| New regression coverage: credential-shape redaction (`redact`), 410/EOL permanence, bounded 429 retries, `_safe_error` keyword-only fallback, and conversation-history/skills preservation through failover | tests/test_redaction_offline.py, tests/test_provider_error_handling_offline.py, tests/test_failover_offline.py | 152 passed |
+| token.txt untracked from the repository snapshot (expired JWT, local copy preserved). Earlier commits still contain it — no history rewrite, no force-push | index | Absent from latest snapshot; present in pre-`2026-10-28c` history |
+| Docs honesty pass: NVIDIA = VERIFIED LIVE, Gemini = BLOCKED, failover = TESTED OFFLINE (one scripted-primary + real-NVIDIA run, not two real providers); stale `meta/llama-3.3-70b-instruct` references and 141-test counts updated | README.md, 06_Deployment/DEPLOYMENT.md, 07_Knowledge/KNOWN-ISSUES.md, 01_Project/PROJECT-STATE.md | Reviewed against code |
+| Removed stray UTF-8 BOM accidentally introduced into tests/test_nvidia_provider_offline.py | tests/test_nvidia_provider_offline.py | File starts with `"""`, diff clean |
 
 ## Recent Changes (2026-10-28)
 

@@ -7,8 +7,10 @@ API and Google Gemini) with automatic failover.
 
 > Status: **development-ready backend** — Sprint 1 (foundation & auth) and the
 > LLM-provider integration (Sprint "Provider-Agnostic LLM Integration") are
-> complete and covered by offline tests. Live API verification is **BLOCKED**
-> until real credentials are configured. See [Known limitations](#known-limitations).
+> complete and covered by offline tests. The NVIDIA Build API provider is
+> **VERIFIED LIVE** (real request, 2026-10-28). Gemini live verification is
+> **BLOCKED** — no `GEMINI_API_KEY` is available yet. See
+> [Known limitations](#known-limitations).
 
 ---
 
@@ -22,10 +24,10 @@ API and Google Gemini) with automatic failover.
 | Document upload (`.txt`, `.pdf`, `.docx`), text extraction, chunking | ✅ IMPLEMENTED |
 | RAG: real `sentence-transformers` embeddings (`all-MiniLM-L6-v2`, 384-dim) stored with pgvector `Vector(384)` | ✅ IMPLEMENTED, TESTED OFFLINE |
 | Similarity search + response pipeline with citations | ✅ IMPLEMENTED, TESTED OFFLINE |
-| LLM providers: `nvidia_build` (NVIDIA Build API), `google` (Gemini via its OpenAI-compatibility endpoint) | ✅ IMPLEMENTED, **TESTED OFFLINE ONLY** |
+| LLM providers: `nvidia_build` (NVIDIA Build API), `google` (Gemini via its OpenAI-compatibility endpoint) | ✅ IMPLEMENTED — `nvidia_build` **VERIFIED LIVE**, `google` live **BLOCKED** (no key) |
 | Automatic provider failover: deterministic order, cooldowns, hard deadlines, bounded retries, secret redaction | ✅ IMPLEMENTED, TESTED OFFLINE |
 | `mock` provider for offline development (never presented as real AI output) | ✅ IMPLEMENTED |
-| Live smoke tests against NVIDIA / Gemini | ⛔ BLOCKED (no API keys configured) |
+| Live smoke tests against NVIDIA / Gemini | NVIDIA ✅ **VERIFIED LIVE** (2026-10-28); Gemini ⛔ **BLOCKED** (no `GEMINI_API_KEY`) |
 | Streaming responses | ❌ NOT IMPLEMENTED |
 | LangGraph checkpoint persistence (multi-turn resume) | ❌ NOT IMPLEMENTED |
 | `openai` (OpenAI direct) provider | ❌ NOT IMPLEMENTED |
@@ -55,7 +57,7 @@ app/
     │                       NVIDIABuildModelProvider + GeminiModelProvider +
     │                       FailoverModelProvider + ModelProviderFactory
     └── embedding_provider.py  sentence-transformers with mock fallback
-tests/                      141 offline tests (pytest)
+tests/                      144 offline tests (pytest)
 alembic/                    database migrations
 frontend/                   legacy static pages (not maintained)
 docs/…, 01–07_*/            project documentation
@@ -79,8 +81,8 @@ docs/…, 01–07_*/            project documentation
 
 ```powershell
 cd "C:\Ai Agents\Justice AI"
-python -m venv venv              # the repo ships none; create fresh
-.\venv\Scripts\activate          # Windows PowerShell
+python -m venv .venv             # the repo ships none; create fresh
+.\.venv\Scripts\activate         # Windows PowerShell
 ```
 
 ## Dependency installation
@@ -131,11 +133,13 @@ All providers speak the OpenAI Chat Completions wire protocol.
 ### NVIDIA Build API (`nvidia_build`)
 - Get a key at [build.nvidia.com](https://build.nvidia.com) — keys start
   with `nvapi-` (enforced by the adapter).
-- Default model: `meta/llama-3.3-70b-instruct` (structured output NOT
-  supported on this model per its official card — the adapter reports this).
-- **Deprecation watch:** NVIDIA deprecates model ids regularly (e.g. Llama
-  3.1 8B returned HTTP 410). Check
-  [models](https://build.nvidia.com/models) and override with
+- Default model: `nvidia/nemotron-3.5-lightning-30b-a3b` (verified live on
+  2026-10-28 via `/v1/models` and a smoke generation). Structured output is
+  reported as **not supported** by the adapter (conservative capability flag).
+- **Deprecation watch:** NVIDIA deprecates model ids regularly — the previous
+  default `meta/llama-3.3-70b-instruct` reached end of life on 2026-08-26 and
+  now returns **HTTP 410**. HTTP 410 is treated as a permanent error (no
+  retries). Check [models](https://build.nvidia.com/models) and override with
   `NVIDIA_MODEL_NAME` if needed.
 
 ### Google Gemini (`google`)
@@ -181,14 +185,19 @@ API surface (JWT `Authorization: Bearer <token>` required):
 ## Running tests
 
 ```powershell
-.\venv\Scripts\python.exe -m pytest tests/ -q --tb=short
+.\.venv\Scripts\python.exe -m pytest tests/ -q --tb=short
 ```
 
-- **141 tests, all offline** (fixtures/fakes; no network, no API keys).
-  Latest runs: `141 passed` in ~3 minutes, exit code 0.
+- **144 tests, all offline** (fixtures/fakes; no network, no API keys).
+  Latest runs: `144 passed` in ~2:40, exit code 0.
 - Live provider tests are **not automated**; after configuring keys, smoke
   test with minimal prompts and never send confidential legal or personal
   data to remote APIs.
+- Live status: NVIDIA Build API **VERIFIED LIVE** (2026-10-28, real
+  `chat/completions` request returning the expected token); Gemini **BLOCKED**
+  (no key configured). Failover has been exercised offline with deterministic
+  fakes and once with a scripted failing primary + real NVIDIA fallback — that
+  is **not** a two-real-provider live test.
 
 ## Security considerations
 
@@ -196,8 +205,11 @@ API surface (JWT `Authorization: Bearer <token>` required):
   errors (redaction in the provider layer). Never commit `.env`, tokens, or
   database dumps.
 - **Tokens**: a documentation file previously contained an expired JWT
-  fragment; it has been scrubbed. That expired token remains recoverable
-  from git history (no history rewrite was performed).
+  fragment; it has been scrubbed. `token.txt` (an expired test JWT) is now
+  **untracked** and absent from the latest snapshot, and `.env` stays
+  gitignored. That expired token remains recoverable from earlier git history
+  (no history rewrite was performed); it is expired and not tied to a live
+  session.
 - **Multi-tenancy**: all queries are tenant-scoped; skills enforce declared
   permissions at execution time.
 - **Fallback disclosure**: in `mock` mode responses are explicitly produced

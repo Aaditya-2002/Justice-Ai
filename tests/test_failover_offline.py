@@ -162,20 +162,27 @@ class TestCooldownAndRecovery:
         working = FakeProvider("beta")
         chain = _chain(failing, working, cooldown=0.2)
         await chain.generate_response(prompt="hi", conversation_history=[])
+        # failing provider cooldown; successful provider stays available
         assert chain.is_in_cooldown("alpha") is True
-        assert chain.is_in_cooldown("beta") is True  # will be set after its attempt too
+        assert chain.is_in_cooldown("beta") is False
+        # and the successful provider is used again immediately
+        assert await chain.generate_response(prompt="2nd", conversation_history=[]) == "ok"
+        assert working.calls == 2
 
     @pytest.mark.asyncio
     async def test_cooldown_skips_provider_with_attempts_allowed(self):
         flaky = FakeProvider("alpha", behavior="fail")
         backup = FakeProvider("beta", content="from-beta")
         chain = _chain(flaky, backup, cooldown=60)
-        await chain.generate_response(prompt="1st", conversation_history=[])
+        # 1st: alpha fails (60s cooldown), beta serves
+        first = await chain.generate_response(prompt="1st", conversation_history=[])
+        assert first == "from-beta" and backup.calls == 1
         first_calls = flaky.calls
-        # both are in 60s cooldown now → both skipped → unavailable
-        with pytest.raises(ProviderUnavailableError):
-            await chain.generate_response(prompt="2nd", conversation_history=[])
+        # 2nd: alpha still in 60s cooldown → skipped, beta keeps serving
+        second = await chain.generate_response(prompt="2nd", conversation_history=[])
+        assert second == "from-beta"
         assert flaky.calls == first_calls  # skipped, not attempted
+        assert backup.calls == 2
 
     @pytest.mark.asyncio
     async def test_recovery_after_cooldown_expires(self):
@@ -254,3 +261,44 @@ class TestRagContextPreservedThroughChain:
             context="RETRIEVED-CONTEXT-TOKEN",
         )
         assert seen["context"] == "RETRIEVED-CONTEXT-TOKEN"
+
+    @pytest.mark.asyncio
+    async def test_history_and_skills_preserved_through_failover(self):
+        """The fallback provider receives the exact same request contract."""
+        seen = {}
+
+        class Capture(FakeProvider):
+            async def generate_response(self, prompt, conversation_history, context=None, skills=None, **kwargs):
+                seen.update(
+                    prompt=prompt,
+                    history=conversation_history,
+                    context=context,
+                    skills=skills,
+                    kwargs=kwargs,
+                )
+                return "from-fallback"
+
+        failing = FakeProvider("alpha", behavior="fail")
+        fallback = Capture("beta")
+        chain = _chain(failing, fallback)
+        history = [
+            {"role": "user", "content": "Turn 1: cite Article 21"},
+            {"role": "assistant", "content": "Article 21 guarantees equality."},
+        ]
+        skills = [{"name": "case_lookup", "args": {"query": "Article 21"}}]
+
+        result = await chain.generate_response(
+            prompt="Follow up on that citation",
+            conversation_history=history,
+            context="RAG-CONTEXT-42",
+            skills=skills,
+            temperature=0.2,
+        )
+
+        assert result == "from-fallback"
+        assert seen["prompt"] == "Follow up on that citation"
+        assert seen["history"] == history
+        assert seen["history"] is history
+        assert seen["context"] == "RAG-CONTEXT-42"
+        assert seen["skills"] == skills
+        assert seen["kwargs"] == {"temperature": 0.2}

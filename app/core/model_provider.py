@@ -6,6 +6,7 @@ Supports multiple providers through a common abstract base class.
 
 import asyncio
 import os
+import re
 import time
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
@@ -35,12 +36,20 @@ class ProviderUnavailableError(Exception):
 def redact(text: str, *secrets: Optional[str]) -> str:
     """Return *text* with every secret replaced by '[REDACTED]'.
 
-    Used on exception messages and logs so API keys can never leak.
+    Applies two layers:
+    1. Exact known secrets passed as arguments.
+    2. Any credential-shaped literal (nvapi-..., sk-..., AIza..., ghp_...,
+       AKIA...) so keys a caller forgot to pass can never leak.
     """
     result = text
     for secret in secrets:
         if secret:
             result = result.replace(secret, "[REDACTED]")
+    result = re.sub(
+        r"(?:nvapi-|sk-[a-zA-Z]|AIza|ghp_)[A-Za-z0-9_-]{12,}|AKIA[A-Z0-9]{12,}",
+        "[REDACTED]",
+        result,
+    )
     return result
 
 
@@ -272,11 +281,19 @@ class OpenAICompatibleProvider(ModelProvider):
     def _safe_error(self, error: Exception) -> Exception:
         """Rebuild an exception with the API key redacted from its message.
 
-        Preserves the original exception type so callers can catch specific
-        error types (e.g. ValueError for empty responses).
+        ValueErrors are kept as ValueErrors (empty-response semantics).
+        SDK exception classes may require extra keyword-only args (body,
+        response) that cannot be reconstructed from a message alone; those
+        fall back to a plain redacted Exception instead of masking the
+        real error with a TypeError about missing arguments.
         """
         safe = redact(str(error), self._api_key)
-        return type(error)(safe)
+        if isinstance(error, ValueError):
+            return ValueError(safe)
+        try:
+            return type(error)(safe)
+        except TypeError:
+            return Exception(safe)
 
     async def generate_response(
         self,
@@ -311,11 +328,12 @@ class OpenAICompatibleProvider(ModelProvider):
                 last_exception = e
                 error_str = str(e).lower()
 
-                # Permanent errors (auth, invalid model) bubble up immediately;
-                # transient ones (429, 5xx, connection, timeout) retry with backoff.
+                # Permanent errors (auth, invalid model, model EOL 410) bubble
+                # up immediately; transient ones (429, 5xx, connection,
+                # timeout) retry with backoff.
                 is_permanent = any(
                     keyword in error_str
-                    for keyword in ["401", "403", "404", "invalid api key", "unauthorized", "not found"]
+                    for keyword in ["401", "403", "404", "410", "invalid api key", "unauthorized", "not found", "end of life"]
                 )
                 if is_permanent or attempt >= self._max_retries:
                     raise self._safe_error(e) from e
@@ -331,12 +349,15 @@ class NVIDIABuildModelProvider(OpenAICompatibleProvider):
 
     Uses the OpenAI-compatible API at https://integrate.api.nvidia.com/v1
     with Bearer token authentication (nvapi-... prefix).
-    Verified: model ids follow 'org/model-name' (e.g. meta/llama-3.3-70b-instruct);
-    chat completions, streaming and tool calling are supported on hosted NIMs.
+    Verified: model ids follow 'org/model-name' (e.g.
+    nvidia/nemotron-3.5-lightning-30b-a3b); chat completions, streaming and
+    tool calling are supported on hosted NIMs.
     """
 
     _default_base_url = "https://integrate.api.nvidia.com/v1"
-    _default_model = "meta/llama-3.3-70b-instruct"
+    # Llama-3.3-70B-Instruct reached EOL 2026-08-26 (HTTP 410).
+    # Verified live via /v1/models and a smoke generation on 2026-10-28.
+    _default_model = "nvidia/nemotron-3.5-lightning-30b-a3b"
     _key_prefix = "nvapi-"
 
     def get_provider_name(self) -> str:
@@ -350,8 +371,9 @@ class NVIDIABuildModelProvider(OpenAICompatibleProvider):
             "chat_completions": True,
             "streaming": True,  # vLLM backend supports streaming
             "tool_calling": True,  # vLLM backend supports tool calling
-            # Per the official meta/llama-3.3-70b-instruct model card:
-            # "Structured Output: Not supported" (function calling IS supported)
+            # Conservative: NVIDIA's hosted model cards have not verified
+            # structured output for every model id (the previous default,
+            # meta/llama-3.3-70b-instruct, explicitly did not support it).
             "structured_output": False,
             "embeddings": False,  # Separate embedding endpoint
             "token_counting": True,  # tokenize endpoint available
@@ -501,9 +523,10 @@ class FailoverModelProvider(ModelProvider):
                     ),
                     timeout=self.request_deadline_seconds,
                 )
-                # Mark this provider as in cooldown even on success,
-                # so it isn't immediately re-hit on the next turn.
-                self._cooldown_until[name] = self._now() + self.cooldown_seconds
+                # Success: clear any stale cooldown and return. A healthy
+                # provider must keep serving traffic (first-healthy-wins),
+                # NOT be throttled after every successful call.
+                self._cooldown_until.pop(name, None)
                 return result
             except asyncio.TimeoutError:
                 self._cooldown_until[name] = self._now() + self.cooldown_seconds
